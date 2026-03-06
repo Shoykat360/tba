@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../../core/extensions/either_extensions.dart';
 import '../../domain/usecases/initialize_camera.dart';
 import '../../domain/usecases/capture_image_and_store_locally.dart';
 import '../../domain/usecases/set_camera_zoom_level.dart';
@@ -39,17 +40,27 @@ class CameraBloc extends Bloc<CameraEvent, CameraState> {
   Future<void> _onInitialize(
       InitializeCameraEvent event, Emitter<CameraState> emit) async {
     emit(const CameraLoading());
+
     final result = await initializeCamera(NoParams());
-    result.fold(
-      (failure) => emit(CameraError(failure.message)),
-      (controller) async {
-        final configResult = await cameraRepository.getCameraConfiguration(controller);
-        configResult.fold(
-          (failure) => emit(CameraError(failure.message)),
-          (config) => emit(CameraReady(controller: controller, configuration: config)),
-        );
-      },
-    );
+
+    if (result.leftOrNull != null) {
+      emit(CameraError(result.leftOrNull?.message ?? 'Camera initialization failed'));
+      return;
+    }
+
+    final controller = result.rightOrNull!;
+
+    final configResult = await cameraRepository.getCameraConfiguration(controller);
+
+    if (configResult.leftOrNull != null) {
+      emit(CameraError(configResult.leftOrNull?.message ?? 'Failed to get camera config'));
+      return;
+    }
+
+    emit(CameraReady(
+      controller: controller,
+      configuration: configResult.rightOrNull!,
+    ));
   }
 
   Future<void> _onCapture(
@@ -63,17 +74,42 @@ class CameraBloc extends Bloc<CameraEvent, CameraState> {
     ));
 
     final result = await captureImage(current.controller);
-    result.fold(
-      (failure) => emit(CameraError(failure.message)),
-      (image) async {
-        await addToQueue(image);
-        emit(CameraReady(
-          controller: current.controller,
-          configuration: current.configuration,
-        ));
-      },
-    );
+
+    if (result.leftOrNull != null) {
+      emit(CameraError(result.leftOrNull?.message ?? 'Capture failed'));
+      return;
+    }
+
+    final image = result.rightOrNull!;
+    await addToQueue(image);
+
+    emit(CameraReady(
+      controller: current.controller,
+      configuration: current.configuration,
+    ));
   }
+
+  /*Future<void> _onSetZoom(
+      SetZoomLevelEvent event, Emitter<CameraState> emit) async {
+    final current = state;
+    if (current is! CameraReady) return;
+
+    final clampedZoom = event.zoom.clamp(
+      current.configuration.minZoom,
+      current.configuration.maxZoom,
+    );
+
+    final result = await setZoomLevel(SetCameraZoomLevelParams(
+      controller: current.controller,
+      zoom: clampedZoom,
+    ));
+
+    if (result.rightOrNull != null) {
+      emit(current.copyWith(
+        configuration: current.configuration.copyWith(currentZoom: clampedZoom),
+      ));
+    }
+  }*/
 
   Future<void> _onSetZoom(
       SetZoomLevelEvent event, Emitter<CameraState> emit) async {
@@ -90,12 +126,12 @@ class CameraBloc extends Bloc<CameraEvent, CameraState> {
       zoom: clampedZoom,
     ));
 
-    result.fold(
-      (failure) => null, // silent fail for zoom
-      (_) => emit(current.copyWith(
+    // Only update state if zoom succeeded (no failure)
+    if (result.leftOrNull == null) {
+      emit(current.copyWith(
         configuration: current.configuration.copyWith(currentZoom: clampedZoom),
-      )),
-    );
+      ));
+    }
   }
 
   Future<void> _onSetFocus(
@@ -108,19 +144,17 @@ class CameraBloc extends Bloc<CameraEvent, CameraState> {
       point: event.point,
     ));
 
-    result.fold(
-      (failure) => null,
-      (_) {
-        emit(current.copyWith(
-          focusPoint: event.point,
-          showFocusIndicator: true,
-        ));
-        _focusTimer?.cancel();
-        _focusTimer = Timer(const Duration(seconds: 2), () {
-          add(const ClearFocusIndicatorEvent());
-        });
-      },
-    );
+    if (result.leftOrNull != null) return;
+
+    emit(current.copyWith(
+      focusPoint: event.point,
+      showFocusIndicator: true,
+    ));
+
+    _focusTimer?.cancel();
+    _focusTimer = Timer(const Duration(seconds: 2), () {
+      add(const ClearFocusIndicatorEvent());
+    });
   }
 
   Future<void> _onDispose(
@@ -133,7 +167,8 @@ class CameraBloc extends Bloc<CameraEvent, CameraState> {
     emit(const CameraInitial());
   }
 
-  void _onClearFocus(ClearFocusIndicatorEvent event, Emitter<CameraState> emit) {
+  void _onClearFocus(
+      ClearFocusIndicatorEvent event, Emitter<CameraState> emit) {
     final current = state;
     if (current is CameraReady) {
       emit(current.copyWith(showFocusIndicator: false));

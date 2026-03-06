@@ -26,7 +26,7 @@ class SyncBloc extends Bloc<SyncEvent, SyncState> {
     on<ConnectivityChangedEvent>(_onConnectivityChanged);
   }
 
-  Future<void> _onLoad(
+ /* Future<void> _onLoad(
       LoadPendingUploadsEvent event, Emitter<SyncState> emit) async {
     emit(const SyncLoading());
     final result = await retrievePending(NoParams());
@@ -38,6 +38,28 @@ class SyncBloc extends Bloc<SyncEvent, SyncState> {
         emit(SyncIdle(pendingBatches: batches, isConnected: isConnected));
       },
     );
+  }*/
+
+  Future<void> _onLoad(
+      LoadPendingUploadsEvent event, Emitter<SyncState> emit) async {
+    emit(const SyncLoading());
+
+    final result = await retrievePending(NoParams());
+
+    if (result.isLeft()) {
+      result.fold(
+            (failure) => emit(SyncError(failure.message)),
+            (_) {},
+      );
+      return;
+    }
+
+    final batches = result.getOrElse(() => []);
+
+    final connectivityResult = await connectivity.checkConnectivity();
+    final isConnected = connectivityResult != ConnectivityResult.none;
+
+    emit(SyncIdle(pendingBatches: batches, isConnected: isConnected));
   }
 
   Future<void> _onTriggerUpload(
