@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../../core/extensions/either_extensions.dart';
 import '../../domain/usecases/retrieve_pending_upload_queue.dart';
 import '../../domain/usecases/attempt_upload_for_pending_images.dart';
 import '../../../../core/usecases/usecase.dart';
@@ -12,8 +14,10 @@ class SyncBloc extends Bloc<SyncEvent, SyncState> {
   final AttemptUploadForPendingImages attemptUpload;
   final Connectivity connectivity;
 
-  StreamSubscription? _connectivitySub;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
+  Timer? _connectivityPollTimer;
   bool _wasConnected = false;
+  bool _isUploadInProgress = false;
 
   SyncBloc({
     required this.retrievePending,
@@ -26,39 +30,22 @@ class SyncBloc extends Bloc<SyncEvent, SyncState> {
     on<ConnectivityChangedEvent>(_onConnectivityChanged);
   }
 
- /* Future<void> _onLoad(
-      LoadPendingUploadsEvent event, Emitter<SyncState> emit) async {
-    emit(const SyncLoading());
-    final result = await retrievePending(NoParams());
-    result.fold(
-      (failure) => emit(SyncError(failure.message)),
-      (batches) async {
-        final connectivity = await this.connectivity.checkConnectivity();
-        final isConnected = connectivity != ConnectivityResult.none;
-        emit(SyncIdle(pendingBatches: batches, isConnected: isConnected));
-      },
-    );
-  }*/
-
   Future<void> _onLoad(
       LoadPendingUploadsEvent event, Emitter<SyncState> emit) async {
     emit(const SyncLoading());
 
     final result = await retrievePending(NoParams());
 
-    if (result.isLeft()) {
-      result.fold(
-            (failure) => emit(SyncError(failure.message)),
-            (_) {},
-      );
+    if (result.leftOrNull != null) {
+      debugPrint('[SyncBloc] ❌ Failed to load queue: ${result.leftOrNull?.message}');
+      emit(SyncError(result.leftOrNull?.message ?? 'Failed to load queue'));
       return;
     }
 
-    final batches = result.getOrElse(() => []);
+    final batches = result.rightOrNull ?? [];
+    final isConnected = await _checkConnectivity();
 
-    final connectivityResult = await connectivity.checkConnectivity();
-    final isConnected = connectivityResult != ConnectivityResult.none;
-
+    debugPrint('[SyncBloc] ✅ Loaded ${batches.length} batches | connected=$isConnected');
     emit(SyncIdle(pendingBatches: batches, isConnected: isConnected));
   }
 
@@ -66,48 +53,98 @@ class SyncBloc extends Bloc<SyncEvent, SyncState> {
       TriggerUploadEvent event, Emitter<SyncState> emit) async {
     final current = state;
     if (current is! SyncIdle) return;
+    if (_isUploadInProgress) {
+      debugPrint('[SyncBloc] ⚠️ Upload already in progress, skipping');
+      return;
+    }
 
+    final isConnected = await _checkConnectivity();
+
+    if (!isConnected) {
+      debugPrint('[SyncBloc] 📵 No connection — keeping ${current.pendingBatches.length} batches in local queue');
+      emit(SyncIdle(pendingBatches: current.pendingBatches, isConnected: false));
+      return;
+    }
+
+    _isUploadInProgress = true;
+    debugPrint('[SyncBloc] 🚀 Starting upload for ${current.pendingCount} pending + ${current.failedCount} failed batches');
     emit(SyncUploading(batches: current.pendingBatches));
-    await attemptUpload(NoParams());
 
-    // Reload after upload attempt
-    final result = await retrievePending(NoParams());
-    result.fold(
-      (failure) => emit(SyncError(failure.message)),
-      (batches) => emit(SyncIdle(
-        pendingBatches: batches,
-        isConnected: current.isConnected,
-      )),
-    );
+    final result = await attemptUpload(NoParams());
+    _isUploadInProgress = false;
+
+    final reloadResult = await retrievePending(NoParams());
+    final updatedBatches = reloadResult.rightOrNull ?? [];
+    final stillConnected = await _checkConnectivity();
+
+    if (result.leftOrNull != null) {
+      debugPrint('[SyncBloc] ❌ Upload failed: ${result.leftOrNull?.message} — images remain in local queue');
+      emit(SyncIdle(pendingBatches: updatedBatches, isConnected: stillConnected));
+      return;
+    }
+
+    final uploadedCount = updatedBatches.where((b) => b.isUploaded).length;
+    final stillPending = updatedBatches.where((b) => b.isPending || b.isFailed).length;
+    debugPrint('[SyncBloc] ✅ Upload complete — uploaded=$uploadedCount, stillPending=$stillPending');
+
+    emit(SyncIdle(pendingBatches: updatedBatches, isConnected: stillConnected));
   }
 
   Future<void> _onStartMonitor(
       StartConnectivityMonitorEvent event, Emitter<SyncState> emit) async {
     _connectivitySub?.cancel();
-    final initial = await connectivity.checkConnectivity();
-    _wasConnected = initial != ConnectivityResult.none;
+    _connectivityPollTimer?.cancel();
 
-    _connectivitySub = connectivity.onConnectivityChanged.listen((result) {
-      final isNowConnected = result != ConnectivityResult.none;
-      add(ConnectivityChangedEvent(isNowConnected));
+    // Check initial state
+    _wasConnected = await _checkConnectivity();
+    debugPrint('[SyncBloc] 🌐 Monitor started | initial=${_wasConnected ? "ONLINE" : "OFFLINE"}');
+
+    // ── Stream listener (fires on most devices) ──────────────────────
+    _connectivitySub = connectivity.onConnectivityChanged.listen((results) {
+      final isConnected = results.any((r) => r != ConnectivityResult.none);
+      debugPrint('[SyncBloc] 🌐 Stream event → ${isConnected ? "ONLINE" : "OFFLINE"}');
+      add(ConnectivityChangedEvent(isConnected));
     });
+
+    // ── Polling fallback every 3 seconds (fixes Android reliability) ──
+    _connectivityPollTimer = Timer.periodic(
+      const Duration(seconds: 3),
+          (_) async {
+        final isConnected = await _checkConnectivity();
+        if (isConnected != _wasConnected) {
+          debugPrint('[SyncBloc] 🌐 Poll detected change → ${isConnected ? "ONLINE" : "OFFLINE"}');
+          add(ConnectivityChangedEvent(isConnected));
+        }
+      },
+    );
   }
 
   Future<void> _onConnectivityChanged(
       ConnectivityChangedEvent event, Emitter<SyncState> emit) async {
     final current = state;
 
-    // Auto-retry when connectivity is restored
-    if (event.isConnected && !_wasConnected) {
+    final wasOffline = !_wasConnected;
+    final nowOnline = event.isConnected;
+
+    // Connection restored → auto retry
+    if (wasOffline && nowOnline) {
+      debugPrint('[SyncBloc] 🔁 Connection restored — auto-retrying pending uploads');
       _wasConnected = true;
+
       if (current is SyncIdle &&
           (current.pendingCount > 0 || current.failedCount > 0)) {
         add(const TriggerUploadEvent());
+        return;
       }
+    }
+
+    if (!event.isConnected && _wasConnected) {
+      debugPrint('[SyncBloc] 📵 Connection lost — uploads paused, queue preserved locally');
     }
 
     _wasConnected = event.isConnected;
 
+    // Update UI connectivity status
     if (current is SyncIdle) {
       emit(SyncIdle(
         pendingBatches: current.pendingBatches,
@@ -116,9 +153,26 @@ class SyncBloc extends Bloc<SyncEvent, SyncState> {
     }
   }
 
+  /// Single source of truth for connectivity check
+  Future<bool> _checkConnectivity() async {
+    try {
+      final results = await connectivity.checkConnectivity();
+      // checkConnectivity returns List in connectivity_plus ^6.x
+      if (results is List) {
+        return (results as List<ConnectivityResult>)
+            .any((r) => r != ConnectivityResult.none);
+      }
+      return results != ConnectivityResult.none;
+    } catch (e) {
+      debugPrint('[SyncBloc] ⚠️ Connectivity check error: $e');
+      return false;
+    }
+  }
+
   @override
   Future<void> close() {
     _connectivitySub?.cancel();
+    _connectivityPollTimer?.cancel();
     return super.close();
   }
 }
