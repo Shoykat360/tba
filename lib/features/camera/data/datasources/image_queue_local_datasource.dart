@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../../../core/error/exceptions.dart';
 import '../models/image_batch_model.dart';
@@ -16,17 +17,30 @@ class ImageQueueLocalDatasourceImpl implements ImageQueueLocalDatasource {
 
   ImageQueueLocalDatasourceImpl({required Box<Map> box}) : _box = box;
 
+  /// Ensures box is open before any operation
+  /// Critical when app resumes from background
+  Box<Map> get _safeBox {
+    if (!_box.isOpen) {
+      throw CacheException('Hive box is closed. App may have been backgrounded.');
+    }
+    return _box;
+  }
+
   @override
   Future<void> saveBatch(ImageBatchModel batch) async {
     try {
-      await _box.put(batch.id, {
+      await _safeBox.put(batch.id, {
         'id': batch.id,
         'imagesMap': batch.imagesMap,
         'uploadStatusIndex': batch.uploadStatusIndex,
         'createdAt': batch.createdAt.toIso8601String(),
         'retryCount': batch.retryCount,
       });
+      // Flush to disk immediately — prevents data loss if app is killed
+      await _safeBox.flush();
+      debugPrint('[HiveDS] 💾 Saved & flushed batch: ${batch.id.substring(0, 8)}…');
     } catch (e) {
+      debugPrint('[HiveDS] ❌ saveBatch failed: $e');
       throw CacheException('Failed to save batch: $e');
     }
   }
@@ -34,7 +48,7 @@ class ImageQueueLocalDatasourceImpl implements ImageQueueLocalDatasource {
   @override
   Future<List<ImageBatchModel>> getAllBatches() async {
     try {
-      return _box.values.map((rawMap) {
+      return _safeBox.values.map((rawMap) {
         final map = Map<String, dynamic>.from(rawMap);
         final imagesRaw = (map['imagesMap'] as List)
             .map((e) => Map<String, dynamic>.from(e as Map))
@@ -48,20 +62,24 @@ class ImageQueueLocalDatasourceImpl implements ImageQueueLocalDatasource {
         );
       }).toList();
     } catch (e) {
+      debugPrint('[HiveDS] ❌ getAllBatches failed: $e');
       throw CacheException('Failed to load batches: $e');
     }
   }
 
   @override
   Future<void> updateBatch(ImageBatchModel batch) async {
-    await saveBatch(batch);
+    await saveBatch(batch); // saveBatch already flushes
   }
 
   @override
   Future<void> deleteBatch(String batchId) async {
     try {
-      await _box.delete(batchId);
+      await _safeBox.delete(batchId);
+      await _safeBox.flush();
+      debugPrint('[HiveDS] 🗑️ Deleted & flushed batch: ${batchId.substring(0, 8)}…');
     } catch (e) {
+      debugPrint('[HiveDS] ❌ deleteBatch failed: $e');
       throw CacheException('Failed to delete batch: $e');
     }
   }

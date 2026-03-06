@@ -113,7 +113,7 @@ class LocationException implements Exception {
   const LocationException(this.message);
 }
 
-class CameraException implements Exception {
+class CameraHardwareException implements Exception {
   final String message;
-  const CameraException(this.message);
+  const CameraHardwareException(this.message);
 }
