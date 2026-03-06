@@ -1,34 +1,3 @@
-/*
-import '../services/geofence_calculator_service.dart';
-
-class CheckIfUserIsWithinAllowedRadiusParams {
-  final double distanceInMeters;
-  final double allowedRadiusInMeters;
-
-  const CheckIfUserIsWithinAllowedRadiusParams({
-    required this.distanceInMeters,
-    required this.allowedRadiusInMeters,
-  });
-}
-
-/// Synchronous use case. Delegates to [GeofenceCalculatorService].
-class CheckIfUserIsWithinAllowedRadius {
-  final GeofenceCalculatorService _geofenceCalculatorService;
-
-  const CheckIfUserIsWithinAllowedRadius({
-    required GeofenceCalculatorService geofenceCalculatorService,
-  }) : _geofenceCalculatorService = geofenceCalculatorService;
-
-  bool call(CheckIfUserIsWithinAllowedRadiusParams params) {
-    return _geofenceCalculatorService.checkIfUserIsWithinAllowedRadius(
-      distanceInMeters: params.distanceInMeters,
-      allowedRadiusInMeters: params.allowedRadiusInMeters,
-    );
-  }
-}
-*/
-
-
 import 'package:dartz/dartz.dart';
 import 'package:equatable/equatable.dart';
 import '../../../../core/constants/app_constants.dart';
