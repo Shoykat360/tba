@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+
+// ✅ FIXED: same folder — no subdirectory needed
+import 'ui_reconstruction_screen.dart';
+
 import '../../../attendance/presentation/bloc/attendance_bloc.dart';
 import '../../../attendance/presentation/pages/attendance_screen.dart';
 import '../../../../core/di/injection_container.dart';
 import '../../../camera/presentation/bloc/camera_bloc.dart';
 import '../../../camera/presentation/bloc/sync_bloc.dart';
 import '../../../camera/presentation/pages/camera_preview_screen.dart';
-import '../../../ui_showcase/presentation/pages/ui_reconstruction_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -44,7 +47,7 @@ class HomeScreen extends StatelessWidget {
                       taskNumber: '01',
                       title: 'Geo-Fenced Attendance',
                       description:
-                      'Set your office location via GPS and mark attendance only when you are within a 50m radius.',
+                          'Set your office location via GPS and mark attendance only when you are within a 50m radius.',
                       icon: Icons.location_on_rounded,
                       color: const Color(0xFF4F46E5),
                       onTap: () => Navigator.push(
@@ -58,24 +61,11 @@ class HomeScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 16),
-                  /*  _TaskCard(
-                      taskNumber: '02',
-                      title: 'Advanced Camera & Sync',
-                      description:
-                      'Custom camera with zoom, manual focus, batch capture, and resilient background upload sync.',
-                      icon: Icons.camera_alt_rounded,
-                      color: const Color(0xFF0891B2),
-                      onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Task 2 — Coming Soon')),
-                        );
-                      },
-                    ),*/
                     _TaskCard(
                       taskNumber: '02',
                       title: 'Advanced Camera & Sync',
                       description:
-                      'Custom camera with zoom, manual focus, batch capture, and resilient background upload sync.',
+                          'Custom camera with zoom, manual focus, batch capture, and resilient background upload sync.',
                       icon: Icons.camera_alt_rounded,
                       color: const Color(0xFF0891B2),
                       onTap: () => Navigator.push(
@@ -92,26 +82,14 @@ class HomeScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    /*_TaskCard(
-                      taskNumber: '03',
-                      title: 'UI Reconstruction',
-                      description:
-                      'Pixel-perfect UI recreation with animations, micro-interactions, and responsive layout.',
-                      icon: Icons.palette_rounded,
-                      color: const Color(0xFF7C3AED),
-                      onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Task 3 — Coming Soon')),
-                        );
-                      },
-                    ),*/
                     _TaskCard(
                       taskNumber: '03',
                       title: 'UI Reconstruction',
                       description:
-                      'Pixel-perfect UI recreation with animations, micro-interactions, and responsive layout.',
+                          'Pixel-perfect UI recreation with animations, micro-interactions, and responsive layout.',
                       icon: Icons.palette_rounded,
                       color: const Color(0xFF7C3AED),
+                      // ✅ FIXED: navigates to UiReconstructionScreen
                       onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(
