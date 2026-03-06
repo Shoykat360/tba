@@ -1,21 +1,19 @@
+import 'package:camera/camera.dart';
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/failures.dart';
-import '../../../../core/usecases/usecase.dart';
 import '../repositories/camera_repository.dart';
 
 class SetCameraZoomLevelParams {
-  final double zoomLevel;
-  const SetCameraZoomLevelParams({required this.zoomLevel});
+  final CameraController controller;
+  final double zoom;
+  SetCameraZoomLevelParams({required this.controller, required this.zoom});
 }
 
-class SetCameraZoomLevel implements UseCase<void, SetCameraZoomLevelParams> {
-  final CameraRepository _cameraRepository;
+class SetCameraZoomLevel {
+  final CameraRepository repository;
+  SetCameraZoomLevel(this.repository);
 
-  const SetCameraZoomLevel({required CameraRepository cameraRepository})
-      : _cameraRepository = cameraRepository;
-
-  @override
-  Future<Either<Failure, void>> call(SetCameraZoomLevelParams params) async {
-    return await _cameraRepository.updateZoomLevel(params.zoomLevel);
+  Future<Either<Failure, void>> call(SetCameraZoomLevelParams params) {
+    return repository.setZoomLevel(params.controller, params.zoom);
   }
 }

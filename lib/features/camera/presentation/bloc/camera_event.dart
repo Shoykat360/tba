@@ -1,79 +1,39 @@
-/*
+import 'package:camera/camera.dart';
 import 'package:equatable/equatable.dart';
-import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart';
 
 abstract class CameraEvent extends Equatable {
   const CameraEvent();
-
   @override
   List<Object?> get props => [];
 }
 
-/// Fired when [CameraPreviewScreen] mounts — initialises the camera hardware.
-class CameraInitializedEvent extends CameraEvent {
-  const CameraInitializedEvent();
+class InitializeCameraEvent extends CameraEvent {
+  const InitializeCameraEvent();
 }
 
-/// Fired by the pinch gesture recogniser on the preview.
-class PinchToZoomUpdated extends CameraEvent {
-  /// The current pinch scale from [ScaleUpdateDetails.scale].
-  final double pinchScale;
+class CaptureImageEvent extends CameraEvent {
+  const CaptureImageEvent();
+}
 
-  const PinchToZoomUpdated({required this.pinchScale});
-
+class SetZoomLevelEvent extends CameraEvent {
+  final double zoom;
+  const SetZoomLevelEvent(this.zoom);
   @override
-  List<Object?> get props => [pinchScale];
+  List<Object?> get props => [zoom];
 }
 
-/// Fired when the user drags the zoom slider or taps a preset button.
-class ZoomLevelChangeRequested extends CameraEvent {
-  final double zoomLevel;
-
-  const ZoomLevelChangeRequested({required this.zoomLevel});
-
+class SetFocusPointEvent extends CameraEvent {
+  final Offset point;
+  const SetFocusPointEvent(this.point);
   @override
-  List<Object?> get props => [zoomLevel];
+  List<Object?> get props => [point];
 }
 
-/// Fired when the user taps the preview frame to set a manual focus point.
-class ManualFocusPointSet extends CameraEvent {
-  final TapDownDetails tapDetails;
-
-  /// Width of the camera preview widget — required to normalise the tap offset.
-  final double previewWidth;
-
-  /// Height of the camera preview widget — required to normalise the tap offset.
-  final double previewHeight;
-
-  const ManualFocusPointSet({
-    required this.tapDetails,
-    required this.previewWidth,
-    required this.previewHeight,
-  });
-
-  @override
-  List<Object?> get props => [tapDetails, previewWidth, previewHeight];
+class DisposeCameraEvent extends CameraEvent {
+  const DisposeCameraEvent();
 }
 
-/// Fired when user taps one of the rounded preset zoom buttons (0.5x, 1x…).
-class PresetZoomLevelSelected extends CameraEvent {
-  final double presetZoomLevel;
-
-  const PresetZoomLevelSelected({required this.presetZoomLevel});
-
-  @override
-  List<Object?> get props => [presetZoomLevel];
+class ClearFocusIndicatorEvent extends CameraEvent {
+  const ClearFocusIndicatorEvent();
 }
-
-/// Fired when user taps the shutter button.
-class ShutterButtonPressed extends CameraEvent {
-  const ShutterButtonPressed();
-}
-
-/// Fired when the camera screen is disposed.
-class CameraDisposedEvent extends CameraEvent {
-  const CameraDisposedEvent();
-}
-*/
-
-

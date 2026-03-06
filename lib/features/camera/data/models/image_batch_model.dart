@@ -1,111 +1,103 @@
 /*
+import 'package:hive/hive.dart';
 import '../../domain/entities/image_batch.dart';
 import '../../domain/entities/upload_status.dart';
 import 'captured_image_model.dart';
 
-/// JSON-serializable data model for [ImageBatch].
-/// Stored as a JSON-encoded string in Hive [Box<String>].
-class ImageBatchModel {
-  final String id;
-  final String batchName;
-  final List<CapturedImageModel> images;
-  final String uploadStatusRaw;
-  final DateTime createdAt;
-  final int retryCount;
-  final String? lastErrorMessage;
+part 'image_batch_model.g.dart';
 
-  const ImageBatchModel({
+@HiveType(typeId: 11)
+class ImageBatchModel extends HiveObject {
+  @HiveField(0)
+  final String id;
+
+  @HiveField(1)
+  final List<Map<String, dynamic>> imagesMap;
+
+  @HiveField(2)
+  final int uploadStatusIndex;
+
+  @HiveField(3)
+  final DateTime createdAt;
+
+  @HiveField(4)
+  final int retryCount;
+
+  ImageBatchModel({
     required this.id,
-    required this.batchName,
-    required this.images,
-    required this.uploadStatusRaw,
+    required this.imagesMap,
+    required this.uploadStatusIndex,
     required this.createdAt,
     required this.retryCount,
-    this.lastErrorMessage,
   });
 
   factory ImageBatchModel.fromEntity(ImageBatch entity) {
     return ImageBatchModel(
       id: entity.id,
-      batchName: entity.batchName,
-      images: entity.images
-          .map(CapturedImageModel.fromEntity)
+      imagesMap: entity.images
+          .map((img) => CapturedImageModel.fromEntity(img).toMap())
           .toList(),
-      uploadStatusRaw: _uploadStatusToString(entity.uploadStatus),
+      uploadStatusIndex: entity.uploadStatus.index,
       createdAt: entity.createdAt,
       retryCount: entity.retryCount,
-      lastErrorMessage: entity.lastErrorMessage,
     );
   }
 
   ImageBatch toEntity() {
     return ImageBatch(
       id: id,
-      batchName: batchName,
-      images: images.map((m) => m.toEntity()).toList(),
-      uploadStatus: _uploadStatusFromString(uploadStatusRaw),
+      images: imagesMap
+          .map((m) => CapturedImageModel.fromMap(m).toEntity())
+          .toList(),
+      uploadStatus: UploadStatus.values[uploadStatusIndex],
       createdAt: createdAt,
       retryCount: retryCount,
-      lastErrorMessage: lastErrorMessage,
     );
-  }
-
-  factory ImageBatchModel.fromMap(Map<String, dynamic> map) {
-    final List<dynamic> rawImages = map['images'] as List<dynamic>;
-    return ImageBatchModel(
-      id: map['id'] as String,
-      batchName: map['batchName'] as String,
-      images: rawImages
-          .map((e) => CapturedImageModel.fromMap(e as Map<String, dynamic>))
-          .toList(),
-      uploadStatusRaw: map['uploadStatus'] as String,
-      createdAt: DateTime.parse(map['createdAt'] as String),
-      retryCount: (map['retryCount'] as num).toInt(),
-      lastErrorMessage: map['lastErrorMessage'] as String?,
-    );
-  }
-
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'batchName': batchName,
-      'images': images.map((m) => m.toMap()).toList(),
-      'uploadStatus': uploadStatusRaw,
-      'createdAt': createdAt.toIso8601String(),
-      'retryCount': retryCount,
-      'lastErrorMessage': lastErrorMessage,
-    };
-  }
-
-  static String _uploadStatusToString(UploadStatus status) {
-    switch (status) {
-      case UploadStatus.pending:
-        return 'pending';
-      case UploadStatus.uploading:
-        return 'uploading';
-      case UploadStatus.uploaded:
-        return 'uploaded';
-      case UploadStatus.failed:
-        return 'failed';
-    }
-  }
-
-  static UploadStatus _uploadStatusFromString(String raw) {
-    switch (raw) {
-      case 'uploading':
-        // On app restart, any batch stuck in 'uploading' is reset to 'pending'
-        // because the upload was interrupted and must be retried.
-        return UploadStatus.pending;
-      case 'uploaded':
-        return UploadStatus.uploaded;
-      case 'failed':
-        return UploadStatus.failed;
-      case 'pending':
-      default:
-        return UploadStatus.pending;
-    }
   }
 }
 */
 
 
+import '../../domain/entities/image_batch.dart';
+import '../../domain/entities/upload_status.dart';
+import 'captured_image_model.dart';
+
+class ImageBatchModel {
+  final String id;
+  final List<Map<String, dynamic>> imagesMap;
+  final int uploadStatusIndex;
+  final DateTime createdAt;
+  final int retryCount;
+
+  ImageBatchModel({
+    required this.id,
+    required this.imagesMap,
+    required this.uploadStatusIndex,
+    required this.createdAt,
+    required this.retryCount,
+  });
+
+  factory ImageBatchModel.fromEntity(ImageBatch entity) {
+    return ImageBatchModel(
+      id: entity.id,
+      imagesMap: entity.images
+          .map((img) => CapturedImageModel.fromEntity(img).toMap())
+          .toList(),
+      uploadStatusIndex: entity.uploadStatus.index,
+      createdAt: entity.createdAt,
+      retryCount: entity.retryCount,
+    );
+  }
+
+  ImageBatch toEntity() {
+    return ImageBatch(
+      id: id,
+      images: imagesMap
+          .map((m) => CapturedImageModel.fromMap(m).toEntity())
+          .toList(),
+      uploadStatus: UploadStatus.values[uploadStatusIndex],
+      createdAt: createdAt,
+      retryCount: retryCount,
+    );
+  }
+}

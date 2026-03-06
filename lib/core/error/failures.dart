@@ -137,3 +137,13 @@ class NoSavedLocationFailure extends Failure {
       [super.message = 'No office location has been saved.']);
 }
 
+
+
+class CacheFailure extends Failure {
+  const CacheFailure([super.message = 'Cache operation failed.']);
+}
+
+
+class CameraFailure extends Failure {
+  const CameraFailure([super.message = 'Camera operation failed.']);
+}

@@ -4,6 +4,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../attendance/presentation/bloc/attendance_bloc.dart';
 import '../../../attendance/presentation/pages/attendance_screen.dart';
 import '../../../../core/di/injection_container.dart';
+import '../../../camera/presentation/bloc/camera_bloc.dart';
+import '../../../camera/presentation/bloc/sync_bloc.dart';
+import '../../../camera/presentation/pages/camera_preview_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -55,7 +58,7 @@ class HomeScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    _TaskCard(
+                  /*  _TaskCard(
                       taskNumber: '02',
                       title: 'Advanced Camera & Sync',
                       description:
@@ -67,6 +70,26 @@ class HomeScreen extends StatelessWidget {
                           const SnackBar(content: Text('Task 2 — Coming Soon')),
                         );
                       },
+                    ),*/
+                    _TaskCard(
+                      taskNumber: '02',
+                      title: 'Advanced Camera & Sync',
+                      description:
+                      'Custom camera with zoom, manual focus, batch capture, and resilient background upload sync.',
+                      icon: Icons.camera_alt_rounded,
+                      color: const Color(0xFF0891B2),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => MultiBlocProvider(
+                            providers: [
+                              BlocProvider(create: (_) => sl<CameraBloc>()),
+                              BlocProvider(create: (_) => sl<SyncBloc>()),
+                            ],
+                            child: const CameraPreviewScreen(),
+                          ),
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 16),
                     _TaskCard(

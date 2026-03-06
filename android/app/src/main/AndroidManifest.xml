@@ -2,6 +2,16 @@
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <!-- ─── Permissions ─────────────────────────────────────────────── -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+
+    <!-- ─── Camera feature declaration ─────────────────────────────── -->
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>
+
     <application
         android:label="tba_assesment"
         android:name="${applicationName}"
@@ -28,6 +38,19 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <service
+            android:name="androidx.work.impl.background.systemjob.SystemJobService"
+            android:permission="android.permission.BIND_JOB_SERVICE"
+            android:exported="true"/>
+
+        <!-- ─── Boot receiver (retry uploads after device restart) ─── -->
+        <receiver
+            android:name="androidx.work.impl.background.systemalarm.RescheduleReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+            </intent-filter>
+        </receiver>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

@@ -1,10 +1,8 @@
-/*
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dartz/dartz.dart';
-
-import '../../../../core/constants/app_constants.dart';
+import 'package:uuid/uuid.dart';
 import '../../../../core/error/exceptions.dart';
 import '../../../../core/error/failures.dart';
+import '../../domain/entities/captured_image.dart';
 import '../../domain/entities/image_batch.dart';
 import '../../domain/entities/upload_status.dart';
 import '../../domain/repositories/image_sync_repository.dart';
@@ -12,147 +10,122 @@ import '../datasources/image_queue_local_datasource.dart';
 import '../models/image_batch_model.dart';
 
 class ImageSyncRepositoryImpl implements ImageSyncRepository {
-  final ImageQueueLocalDatasource _imageQueueLocalDatasource;
-  final Connectivity _connectivity;
+  final ImageQueueLocalDatasource localDatasource;
+  final Uuid uuid;
 
-  const ImageSyncRepositoryImpl({
-    required ImageQueueLocalDatasource imageQueueLocalDatasource,
-    required Connectivity connectivity,
-  })  : _imageQueueLocalDatasource = imageQueueLocalDatasource,
-        _connectivity = connectivity;
+  // Current in-memory batch being built
+  List<CapturedImage> _currentBatchImages = [];
 
-  @override
-  Future<Either<Failure, void>> addImageToUploadQueue(
-    ImageBatch batch,
-  ) async {
-    try {
-      final ImageBatchModel model = ImageBatchModel.fromEntity(batch);
-      await _imageQueueLocalDatasource.saveOrUpdateBatchInQueue(model);
-      return const Right(null);
-    } on LocalStorageException catch (e) {
-      return Left(LocalStorageFailure(message: e.message));
-    } catch (e) {
-      return Left(
-        LocalStorageFailure(
-          message: 'Failed to add batch to queue: ${e.toString()}',
-        ),
-      );
-    }
-  }
+  ImageSyncRepositoryImpl({
+    required this.localDatasource,
+    required this.uuid,
+  });
 
   @override
-  Future<Either<Failure, List<ImageBatch>>>
-      retrievePendingUploadQueue() async {
+  Future<Either<Failure, void>> addImageToUploadQueue(CapturedImage image) async {
     try {
-      final List<ImageBatchModel> models =
-          await _imageQueueLocalDatasource.getAllBatchesFromQueue();
-      return Right(models.map((m) => m.toEntity()).toList());
-    } on LocalStorageException catch (e) {
-      return Left(LocalStorageFailure(message: e.message));
-    } catch (e) {
-      return Left(
-        LocalStorageFailure(
-          message: 'Failed to retrieve queue: ${e.toString()}',
-        ),
-      );
-    }
-  }
+      _currentBatchImages.add(image);
 
-  @override
-  Future<Either<Failure, void>> attemptUploadForBatch(
-    ImageBatch batch,
-  ) async {
-    try {
-      await Future.delayed(
-        const Duration(milliseconds: AppConstants.simulatedUploadDurationMs),
-      );
+      // Create/update a "pending" batch with the new image
+      final batchId = image.batchId;
+      final batches = await localDatasource.getAllBatches();
+      final existing = batches.where((b) => b.id == batchId).toList();
 
-      final bool stillConnected = await checkInternetConnectivity();
-      if (!stillConnected) {
-        return const Left(ConnectivityFailure());
-      }
-
-      final bool simulatedSuccess = batch.retryCount < 2;
-      if (!simulatedSuccess) {
-        return Left(
-          UploadFailure(
-            message: 'Simulated server error for batch ${batch.id}. Will retry.',
-          ),
+      if (existing.isEmpty) {
+        final batch = ImageBatch(
+          id: batchId,
+          images: [image],
+          uploadStatus: UploadStatus.pending,
+          createdAt: DateTime.now(),
         );
+        await localDatasource.saveBatch(ImageBatchModel.fromEntity(batch));
+      } else {
+        final existingBatch = existing.first.toEntity();
+        final updatedBatch = existingBatch.copyWith(
+          images: [...existingBatch.images, image],
+        );
+        await localDatasource.updateBatch(ImageBatchModel.fromEntity(updatedBatch));
       }
-
       return const Right(null);
-    } catch (e) {
-      return Left(
-        UploadFailure(message: 'Upload failed unexpectedly: ${e.toString()}'),
-      );
+    } on CacheException catch (e) {
+      return Left(CacheFailure(e.message));
     }
   }
 
   @override
-  Future<Either<Failure, void>> updateBatchStatusInQueue(
-    ImageBatch batch,
-  ) async {
+  Future<Either<Failure, List<ImageBatch>>> retrievePendingUploadQueue() async {
     try {
-      final ImageBatchModel model = ImageBatchModel.fromEntity(batch);
-      await _imageQueueLocalDatasource.saveOrUpdateBatchInQueue(model);
-      return const Right(null);
-    } on LocalStorageException catch (e) {
-      return Left(LocalStorageFailure(message: e.message));
-    } catch (e) {
-      return Left(
-        LocalStorageFailure(
-          message: 'Failed to update batch status: ${e.toString()}',
-        ),
-      );
+      final models = await localDatasource.getAllBatches();
+      final batches = models
+          .map((m) => m.toEntity())
+          .where((b) => !b.isUploaded)
+          .toList()
+        ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+      return Right(batches);
+    } on CacheException catch (e) {
+      return Left(CacheFailure(e.message));
     }
   }
 
   @override
-  Future<Either<Failure, void>> removeBatchFromQueue(String batchId) async {
+  Future<Either<Failure, void>> attemptUploadForPendingImages() async {
     try {
-      await _imageQueueLocalDatasource.removeBatchFromQueue(batchId);
+      final models = await localDatasource.getAllBatches();
+      final pendingBatches = models
+          .map((m) => m.toEntity())
+          .where((b) => b.isPending || b.isFailed)
+          .toList();
+
+      for (final batch in pendingBatches) {
+        // Mark as uploading
+        final uploadingBatch = batch.copyWith(uploadStatus: UploadStatus.uploading);
+        await localDatasource.updateBatch(ImageBatchModel.fromEntity(uploadingBatch));
+
+        try {
+          // NOTE: API call omitted as per spec. Simulate success.
+          // In production: await apiDatasource.uploadBatch(batch);
+          await Future.delayed(const Duration(milliseconds: 500));
+
+          // Mark as uploaded
+          final uploaded = batch.copyWith(uploadStatus: UploadStatus.uploaded);
+          await localDatasource.updateBatch(ImageBatchModel.fromEntity(uploaded));
+        } catch (_) {
+          // Mark as failed, increment retry count
+          final failed = batch.copyWith(
+            uploadStatus: UploadStatus.failed,
+            retryCount: batch.retryCount + 1,
+          );
+          await localDatasource.updateBatch(ImageBatchModel.fromEntity(failed));
+        }
+      }
       return const Right(null);
-    } on LocalStorageException catch (e) {
-      return Left(LocalStorageFailure(message: e.message));
-    } catch (e) {
-      return Left(
-        LocalStorageFailure(
-          message: 'Failed to remove batch: ${e.toString()}',
-        ),
-      );
+    } on CacheException catch (e) {
+      return Left(CacheFailure(e.message));
     }
   }
 
-  // FIX 2: connectivity_plus 5.x checkConnectivity() returns a single
-  // ConnectivityResult, not a List. Handle both cases safely.
   @override
-  Future<bool> checkInternetConnectivity() async {
+  Future<Either<Failure, void>> updateBatchStatus(ImageBatch batch) async {
     try {
-      final result = await _connectivity.checkConnectivity();
-      return _isConnected(result);
-    } catch (_) {
-      return false;
+      await localDatasource.updateBatch(ImageBatchModel.fromEntity(batch));
+      return const Right(null);
+    } on CacheException catch (e) {
+      return Left(CacheFailure(e.message));
     }
   }
 
-  /// Safely checks a connectivity result regardless of whether the plugin
-  /// returns a single [ConnectivityResult] or a [List<ConnectivityResult>].
-  bool _isConnected(dynamic result) {
-    if (result is List) {
-      return (result as List).any(_isOnlineResult);
+  @override
+  Future<Either<Failure, void>> clearUploadedBatches() async {
+    try {
+      final models = await localDatasource.getAllBatches();
+      for (final model in models) {
+        if (model.uploadStatusIndex == UploadStatus.uploaded.index) {
+          await localDatasource.deleteBatch(model.id);
+        }
+      }
+      return const Right(null);
+    } on CacheException catch (e) {
+      return Left(CacheFailure(e.message));
     }
-    if (result is ConnectivityResult) {
-      return _isOnlineResult(result);
-    }
-    return false;
   }
-
-  bool _isOnlineResult(dynamic r) =>
-      r == ConnectivityResult.wifi ||
-      r == ConnectivityResult.mobile ||
-      r == ConnectivityResult.ethernet;
 }
-*/
-
-

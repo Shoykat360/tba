@@ -1,29 +1,19 @@
+import 'package:camera/camera.dart';
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/failures.dart';
-import '../../../../core/usecases/usecase.dart';
 import '../repositories/camera_repository.dart';
-
+import 'package:flutter/material.dart';
 class SetManualFocusPointParams {
-  /// Normalised X offset in the preview frame (0.0 = left, 1.0 = right).
-  final double x;
-
-  /// Normalised Y offset in the preview frame (0.0 = top, 1.0 = bottom).
-  final double y;
-
-  const SetManualFocusPointParams({required this.x, required this.y});
+  final CameraController controller;
+  final Offset point;
+  SetManualFocusPointParams({required this.controller, required this.point});
 }
 
-class SetManualFocusPoint implements UseCase<void, SetManualFocusPointParams> {
-  final CameraRepository _cameraRepository;
+class SetManualFocusPoint {
+  final CameraRepository repository;
+  SetManualFocusPoint(this.repository);
 
-  const SetManualFocusPoint({required CameraRepository cameraRepository})
-      : _cameraRepository = cameraRepository;
-
-  @override
-  Future<Either<Failure, void>> call(SetManualFocusPointParams params) async {
-    return await _cameraRepository.setManualFocusPoint(
-      x: params.x,
-      y: params.y,
-    );
+  Future<Either<Failure, void>> call(SetManualFocusPointParams params) {
+    return repository.setFocusPoint(params.controller, params.point);
   }
 }

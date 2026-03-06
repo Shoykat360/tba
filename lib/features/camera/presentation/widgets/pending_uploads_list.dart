@@ -2,231 +2,202 @@ import 'package:flutter/material.dart';
 import '../../domain/entities/image_batch.dart';
 import '../../domain/entities/upload_status.dart';
 
-/// Scrollable list of [ImageBatch] entries with status icons and retry counts.
-/// Pure widget — receives data and callbacks, no BLoC access.
 class PendingUploadsList extends StatelessWidget {
   final List<ImageBatch> batches;
-  final bool isOnline;
+  final VoidCallback onRetry;
+  final bool isConnected;
   final bool isUploading;
-  final VoidCallback onUploadNowPressed;
 
   const PendingUploadsList({
     super.key,
     required this.batches,
-    required this.isOnline,
+    required this.onRetry,
+    required this.isConnected,
     required this.isUploading,
-    required this.onUploadNowPressed,
   });
 
   @override
   Widget build(BuildContext context) {
+    final displayBatches = batches.where((b) => !b.isUploaded).toList();
+
+    if (displayBatches.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            const Icon(Icons.cloud_done_outlined, color: Colors.green, size: 40),
+            const SizedBox(height: 8),
+            Text(
+              'All uploads complete',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Colors.green,
+                  ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildHeader(context),
-        const SizedBox(height: 8.0),
-        if (batches.isEmpty)
-          _buildEmptyState(context)
-        else
-          _buildBatchList(context),
-      ],
-    );
-  }
-
-  Widget _buildHeader(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Row(
-          children: [
-            Text(
-              'Pending Uploads',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
+        // Header row
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Row(
+            children: [
+              Text(
+                'Pending Uploads (${displayBatches.length})',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              const Spacer(),
+              // Connectivity indicator
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: isConnected
+                      ? Colors.green.withOpacity(0.15)
+                      : Colors.red.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      isConnected ? Icons.wifi : Icons.wifi_off,
+                      size: 14,
+                      color: isConnected ? Colors.green : Colors.red,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      isConnected ? 'Online' : 'Offline',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isConnected ? Colors.green : Colors.red,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (isConnected && !isUploading) ...[
+                const SizedBox(width: 8),
+                TextButton.icon(
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.upload, size: 14),
+                  label: const Text('Sync', style: TextStyle(fontSize: 12)),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 4),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
-            ),
-            const SizedBox(width: 8.0),
-            _buildConnectivityBadge(),
-          ],
-        ),
-        if (batches.isNotEmpty)
-          TextButton.icon(
-            onPressed: (isOnline && !isUploading) ? onUploadNowPressed : null,
-            icon: isUploading
-                ? const SizedBox(
-                    width: 14.0,
-                    height: 14.0,
-                    child:
-                        CircularProgressIndicator(strokeWidth: 2.0, color: Colors.white),
-                  )
-                : const Icon(Icons.upload, size: 16.0, color: Colors.white70),
-            label: Text(
-              isUploading ? 'Uploading…' : 'Upload Now',
-              style: const TextStyle(color: Colors.white70, fontSize: 13.0),
-            ),
+                ),
+              ],
+            ],
           ),
+        ),
+        ListView.separated(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: displayBatches.length,
+          separatorBuilder: (_, __) =>
+              const Divider(height: 1, indent: 16, endIndent: 16),
+          itemBuilder: (context, index) {
+            final batch = displayBatches[index];
+            return _BatchTile(
+              batch: batch,
+              isUploading: isUploading,
+            );
+          },
+        ),
       ],
-    );
-  }
-
-  Widget _buildConnectivityBadge() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
-      decoration: BoxDecoration(
-        color: isOnline ? Colors.green.shade700 : Colors.red.shade700,
-        borderRadius: BorderRadius.circular(10.0),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            isOnline ? Icons.wifi : Icons.wifi_off,
-            size: 12.0,
-            color: Colors.white,
-          ),
-          const SizedBox(width: 4.0),
-          Text(
-            isOnline ? 'Online' : 'Offline',
-            style: const TextStyle(color: Colors.white, fontSize: 11.0),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmptyState(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12.0),
-        child: Text(
-          'No pending uploads',
-          style: Theme.of(context)
-              .textTheme
-              .bodySmall
-              ?.copyWith(color: Colors.white54),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBatchList(BuildContext context) {
-    return ListView.separated(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: batches.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 6.0),
-      itemBuilder: (context, index) {
-        return _BatchListTile(batch: batches[index]);
-      },
     );
   }
 }
 
-class _BatchListTile extends StatelessWidget {
+class _BatchTile extends StatelessWidget {
   final ImageBatch batch;
+  final bool isUploading;
 
-  const _BatchListTile({required this.batch});
-
-  Color _buildStatusColor() {
-    switch (batch.uploadStatus) {
-      case UploadStatus.pending:
-        return Colors.orange.shade400;
-      case UploadStatus.uploading:
-        return Colors.blue.shade400;
-      case UploadStatus.uploaded:
-        return Colors.green.shade400;
-      case UploadStatus.failed:
-        return Colors.red.shade400;
-    }
-  }
-
-  IconData _buildStatusIcon() {
-    switch (batch.uploadStatus) {
-      case UploadStatus.pending:
-        return Icons.hourglass_top;
-      case UploadStatus.uploading:
-        return Icons.cloud_upload;
-      case UploadStatus.uploaded:
-        return Icons.cloud_done;
-      case UploadStatus.failed:
-        return Icons.error_outline;
-    }
-  }
-
-  String _buildStatusLabel() {
-    switch (batch.uploadStatus) {
-      case UploadStatus.pending:
-        return 'Pending';
-      case UploadStatus.uploading:
-        return 'Uploading…';
-      case UploadStatus.uploaded:
-        return 'Uploaded';
-      case UploadStatus.failed:
-        return 'Failed (retry ${batch.retryCount})';
-    }
-  }
+  const _BatchTile({required this.batch, required this.isUploading});
 
   @override
   Widget build(BuildContext context) {
-    final Color statusColor = _buildStatusColor();
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.07),
-        borderRadius: BorderRadius.circular(10.0),
-        border: Border.all(color: statusColor.withOpacity(0.4)),
+    return ListTile(
+      dense: true,
+      leading: _statusIcon(),
+      title: Text(
+        'Batch — ${batch.images.length} image${batch.images.length != 1 ? 's' : ''}',
+        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
       ),
-      child: Row(
-        children: [
-          batch.isUploading
-              ? SizedBox(
-                  width: 20.0,
-                  height: 20.0,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.0,
-                    color: statusColor,
-                  ),
-                )
-              : Icon(_buildStatusIcon(), color: statusColor, size: 20.0),
-          const SizedBox(width: 10.0),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  batch.batchName,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13.0,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  '${batch.imageCount} image${batch.imageCount == 1 ? '' : 's'}  ·  ${_buildStatusLabel()}',
-                  style: TextStyle(
-                    color: statusColor,
-                    fontSize: 11.0,
-                  ),
-                ),
-                if (batch.lastErrorMessage != null && batch.isFailed)
-                  Text(
-                    batch.lastErrorMessage!,
-                    style: TextStyle(
-                      color: Colors.red.shade300,
-                      fontSize: 10.0,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-              ],
-            ),
-          ),
-        ],
+      subtitle: Text(
+        _formatTime(batch.createdAt),
+        style: const TextStyle(fontSize: 11),
+      ),
+      trailing: _statusChip(context),
+    );
+  }
+
+  Widget _statusIcon() {
+    switch (batch.uploadStatus) {
+      case UploadStatus.pending:
+        return const Icon(Icons.hourglass_empty, color: Colors.orange, size: 20);
+      case UploadStatus.uploading:
+        return const SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        );
+      case UploadStatus.uploaded:
+        return const Icon(Icons.cloud_done, color: Colors.green, size: 20);
+      case UploadStatus.failed:
+        return const Icon(Icons.error_outline, color: Colors.red, size: 20);
+    }
+  }
+
+  Widget _statusChip(BuildContext context) {
+    Color color;
+    String label;
+    switch (batch.uploadStatus) {
+      case UploadStatus.pending:
+        color = Colors.orange;
+        label = 'Pending';
+        break;
+      case UploadStatus.uploading:
+        color = Colors.blue;
+        label = 'Uploading…';
+        break;
+      case UploadStatus.uploaded:
+        color = Colors.green;
+        label = 'Uploaded';
+        break;
+      case UploadStatus.failed:
+        color = Colors.red;
+        label = 'Failed (${batch.retryCount})';
+        break;
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withOpacity(0.4)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w600),
       ),
     );
+  }
+
+  String _formatTime(DateTime dt) {
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${dt.day}/${dt.month} ${dt.hour}:${dt.minute.toString().padLeft(2, '0')}';
   }
 }

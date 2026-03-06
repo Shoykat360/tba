@@ -128,8 +128,59 @@ import 'package:flutter/material.dart';
 import 'core/di/injection_container.dart' as di;
 import 'features/attendance/presentation/pages/home_screen.dart';
 
+/*
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await di.initDependencies();
+  runApp(const MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'TBA Assessment',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        useMaterial3: true,
+        colorSchemeSeed: const Color(0xFF4F46E5),
+        brightness: Brightness.light,
+      ),
+      darkTheme: ThemeData(
+        useMaterial3: true,
+        colorSchemeSeed: const Color(0xFF4F46E5),
+        brightness: Brightness.dark,
+      ),
+      home: const HomeScreen(),
+    );
+  }
+}*/
+
+
+import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+
+import 'core/di/injection_container.dart' as di;
+import 'features/attendance/presentation/pages/home_screen.dart';
+import 'features/camera/data/background/background_upload_worker.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Hive init — must be BEFORE initDependencies
+  await Hive.initFlutter();
+  await Hive.openBox<Map>('image_batches');
+
+  // WorkManager init
+  try {
+    await BackgroundUploadWorker.initialize();
+    await BackgroundUploadWorker.schedulePeriodicSync();
+  } catch (e) {
+    debugPrint('[WorkManager] init failed: $e');
+  }
+
   await di.initDependencies();
   runApp(const MyApp());
 }

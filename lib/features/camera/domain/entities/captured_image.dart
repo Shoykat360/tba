@@ -1,21 +1,13 @@
-import 'package:equatable/equatable.dart';
-
-/// Represents a single image that has been captured and saved to local storage.
-/// Pure Dart — no Flutter or platform imports.
-class CapturedImage extends Equatable {
+class CapturedImage {
   final String id;
-
-  /// Absolute path to the image file on the device's local storage.
-  final String localFilePath;
-
+  final String localPath;
   final DateTime capturedAt;
+  final String batchId;
 
   const CapturedImage({
     required this.id,
-    required this.localFilePath,
+    required this.localPath,
     required this.capturedAt,
+    required this.batchId,
   });
-
-  @override
-  List<Object?> get props => [id, localFilePath, capturedAt];
 }

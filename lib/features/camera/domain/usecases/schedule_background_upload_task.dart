@@ -1,20 +1,29 @@
 import 'package:dartz/dartz.dart';
+import 'package:workmanager/workmanager.dart';
 import '../../../../core/error/failures.dart';
 import '../../../../core/usecases/usecase.dart';
 
-/// Domain use case that signals intent to schedule a WorkManager background task.
-///
-/// The actual WorkManager call lives in [scheduleBackgroundUploadTask()] in the
-/// background worker (data layer). This use case is a domain-level entry point
-/// that the SyncBloc calls — keeping WorkManager details out of the BLoC.
+const kSyncTaskName = 'image_sync_task';
+const kSyncTaskUniqueName = 'image_sync_unique';
+
 class ScheduleBackgroundUploadTask implements UseCase<void, NoParams> {
-  const ScheduleBackgroundUploadTask();
+  ScheduleBackgroundUploadTask();
 
   @override
   Future<Either<Failure, void>> call(NoParams params) async {
-    // Connectivity is checked inside the background worker when it runs.
-    // WorkManager's NetworkType.connected constraint ensures the task only
-    // executes when a network connection is available — no pre-check needed.
-    return const Right(null);
+    try {
+      await Workmanager().registerPeriodicTask(
+        kSyncTaskUniqueName,
+        kSyncTaskName,
+        frequency: const Duration(minutes: 15),
+        constraints: Constraints(
+          networkType: NetworkType.connected,
+        ),
+        existingWorkPolicy: ExistingWorkPolicy.keep,
+      );
+      return const Right(null);
+    } catch (e) {
+      return Left(CacheFailure('Failed to schedule background task: $e'));
+    }
   }
 }
