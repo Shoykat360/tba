@@ -12,8 +12,6 @@ class AppConstants {
   // Location
   static const int locationTimeoutSeconds = 15;
 
-  // Attendance
-  static const double allowedRadiusMeters = 50.0;
 
   // Camera / Sync
   static const String imageBatchesKey = 'image_batches_queue';

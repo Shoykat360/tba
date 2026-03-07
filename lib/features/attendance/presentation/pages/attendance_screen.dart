@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/utils/date_time_formatter.dart';
+import '../../domain/entities/attendance_record.dart';
 import '../bloc/attendance_bloc.dart';
 import '../bloc/attendance_event.dart';
 import '../bloc/attendance_state.dart';
@@ -20,7 +21,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   @override
   void initState() {
     super.initState();
-    context.read<AttendanceBloc>().add(const InitializeAttendanceEvent());
+    context.read<AttendanceBloc>().add(const InitializeAttendanceScreen());
   }
 
   @override
@@ -29,123 +30,101 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       appBar: AppBar(
         title: const Text('Attendance'),
         centerTitle: true,
-        actions: [
-          BlocBuilder<AttendanceBloc, AttendanceState>(
-            builder: (context, state) {
-              return IconButton(
-                icon: const Icon(Icons.refresh_rounded),
-                tooltip: 'Refresh Location',
-                onPressed: state.status == AttendanceStatus.loading
-                    ? null
-                    : () => context
-                    .read<AttendanceBloc>()
-                    .add(const RefreshUserLocationEvent()),
-              );
-            },
-          ),
-        ],
+        actions: [buildRefreshIconButton()],
       ),
       body: BlocConsumer<AttendanceBloc, AttendanceState>(
-        listener: (context, state) {
-          if (state.attendanceMarkedSuccessfully) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: const Row(
-                  children: [
-                    Icon(Icons.check_circle, color: Colors.white),
-                    SizedBox(width: 10),
-                    Text('Attendance marked successfully!'),
-                  ],
-                ),
-                backgroundColor: Colors.green,
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
-            );
-          }
-
-          if (state.locationSetStatus == LocationSetStatus.set &&
-              state.errorMessage == null) {
-            final prevStatus = context.read<AttendanceBloc>().state.locationSetStatus;
-            if (prevStatus == LocationSetStatus.setting) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: const Row(
-                    children: [
-                      Icon(Icons.location_on, color: Colors.white),
-                      SizedBox(width: 10),
-                      Text('Office location saved!'),
-                    ],
-                  ),
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-              );
-            }
-          }
-        },
-        builder: (context, state) {
-          return RefreshIndicator(
-            onRefresh: () async {
-              context
-                  .read<AttendanceBloc>()
-                  .add(const RefreshUserLocationEvent());
-            },
-            child: SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildStatusCard(context, state),
-                  const SizedBox(height: 20),
-                  _buildDistanceSection(context, state),
-                  const SizedBox(height: 24),
-                  _buildOfficeInfoSection(context, state),
-                  const SizedBox(height: 24),
-                  SetLocationButton(
-                    isLoading:
-                    state.locationSetStatus == LocationSetStatus.setting,
-                    hasLocation: state.officeLocation != null,
-                    onPressed: () => context
-                        .read<AttendanceBloc>()
-                        .add(const SetOfficeLocationEvent()),
-                  ),
-                  const SizedBox(height: 12),
-                  AttendanceActionButton(
-                    canMarkAttendance: state.canMarkAttendance,
-                    isLoading: state.isMarkingAttendance,
-                    onPressed: () => context
-                        .read<AttendanceBloc>()
-                        .add(const MarkAttendanceEvent()),
-                  ),
-                  if (state.errorMessage != null) ...[
-                    const SizedBox(height: 16),
-                    _buildErrorBanner(context, state.errorMessage!),
-                  ],
-                  if (state.locationSetError != null) ...[
-                    const SizedBox(height: 16),
-                    _buildErrorBanner(context, state.locationSetError!),
-                  ],
-                  if (state.attendanceHistory.isNotEmpty) ...[
-                    const SizedBox(height: 28),
-                    _buildAttendanceHistory(context, state),
-                  ],
-                ],
-              ),
-            ),
-          );
-        },
+        listener: handleBlocSideEffects,
+        builder: buildScreenBody,
       ),
     );
   }
 
-  Widget _buildStatusCard(BuildContext context, AttendanceState state) {
+  // ─── AppBar ───────────────────────────────────────────────────────────────
+
+  Widget buildRefreshIconButton() {
+    return BlocBuilder<AttendanceBloc, AttendanceState>(
+      builder: (context, state) {
+        return IconButton(
+          icon: const Icon(Icons.refresh_rounded),
+          tooltip: 'Refresh Location',
+          onPressed: state.status == AttendanceStatus.loading
+              ? null
+              : () => context
+              .read<AttendanceBloc>()
+              .add(const RefreshCurrentUserLocation()),
+        );
+      },
+    );
+  }
+
+  // ─── BlocConsumer Callbacks ───────────────────────────────────────────────
+
+  /// Handles one-time side effects.
+  /// When attendance is marked successfully, shows a success popup dialog.
+  /// When user taps "Back to Home" inside the dialog, it navigates back.
+  void handleBlocSideEffects(BuildContext context, AttendanceState state) {
+    if (state.attendanceJustMarkedSuccessfully) {
+      showAttendanceSuccessDialog(context, state);
+    }
+  }
+
+  Widget buildScreenBody(BuildContext context, AttendanceState state) {
+    return RefreshIndicator(
+      onRefresh: () async {
+        context
+            .read<AttendanceBloc>()
+            .add(const RefreshCurrentUserLocation());
+      },
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            buildStatusHeaderCard(context, state),
+            const SizedBox(height: 20),
+            buildDistanceSection(context, state),
+            const SizedBox(height: 24),
+            buildOfficeInfoSection(context, state),
+            const SizedBox(height: 24),
+            SetLocationButton(
+              isLoading: state.locationSetStatus == LocationSetStatus.saving,
+              hasLocation: state.officeLocation != null,
+              onPressed: () => context
+                  .read<AttendanceBloc>()
+                  .add(const SaveCurrentLocationAsOffice()),
+            ),
+            const SizedBox(height: 12),
+            AttendanceActionButton(
+              canMarkAttendance: state.canMarkAttendance,
+              isLoading: state.isSavingAttendance,
+              onPressed: () => context
+                  .read<AttendanceBloc>()
+                  .add(const ConfirmAttendanceMarking()),
+            ),
+            if (state.generalErrorMessage != null) ...[
+              const SizedBox(height: 16),
+              buildErrorBanner(context, state.generalErrorMessage!),
+            ],
+            if (state.locationSaveErrorMessage != null) ...[
+              const SizedBox(height: 16),
+              buildErrorBanner(context, state.locationSaveErrorMessage!),
+            ],
+            if (state.attendanceHistory.isNotEmpty) ...[
+              const SizedBox(height: 28),
+              buildAttendanceHistoryList(context, state),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─── UI Sections ─────────────────────────────────────────────────────────
+
+  Widget buildStatusHeaderCard(BuildContext context, AttendanceState state) {
     final theme = Theme.of(context);
-    final isLoading = state.status == AttendanceStatus.loading;
+    final bool isLoading = state.status == AttendanceStatus.loading;
 
     return Container(
       width: double.infinity,
@@ -181,45 +160,39 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              if (isLoading)
-                const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                      color: Colors.white, strokeWidth: 2),
-                )
-              else
-                Icon(
-                  state.isWithinRadius
-                      ? Icons.verified_rounded
-                      : Icons.location_on_rounded,
-                  color: Colors.white,
-                  size: 22,
-                ),
+              isLoading
+                  ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                    color: Colors.white, strokeWidth: 2),
+              )
+                  : Icon(
+                state.isUserInsideGeofence
+                    ? Icons.verified_rounded
+                    : Icons.location_on_rounded,
+                color: Colors.white,
+                size: 22,
+              ),
             ],
           ),
           const SizedBox(height: 8),
           Text(
             DateTimeFormatter.formatDateTime(DateTime.now()),
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: Colors.white70),
+            style: theme.textTheme.bodySmall?.copyWith(color: Colors.white70),
           ),
           const SizedBox(height: 4),
           Text(
-            state.officeLocation == null
-                ? 'No office location set'
-                : state.isWithinRadius
-                ? 'You are at the office ✅'
-                : 'Outside office zone',
-            style: theme.textTheme.bodyMedium
-                ?.copyWith(color: Colors.white, fontWeight: FontWeight.w500),
+            resolveGeofenceStatusMessage(state),
+            style: theme.textTheme.bodyMedium?.copyWith(
+                color: Colors.white, fontWeight: FontWeight.w500),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildDistanceSection(BuildContext context, AttendanceState state) {
+  Widget buildDistanceSection(BuildContext context, AttendanceState state) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -234,39 +207,19 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         DistanceIndicatorWidget(
           distanceInMeters: state.officeLocation == null
               ? null
-              : state.distanceInMeters,
-          isWithinRadius: state.isWithinRadius,
+              : state.distanceFromOfficeInMeters,
+          isWithinRadius: state.isUserInsideGeofence,
           isLoading: state.status == AttendanceStatus.loading,
         ),
       ],
     );
   }
 
-  Widget _buildOfficeInfoSection(BuildContext context, AttendanceState state) {
+  Widget buildOfficeInfoSection(BuildContext context, AttendanceState state) {
     final theme = Theme.of(context);
 
     if (state.officeLocation == null) {
-      return Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceVariant.withOpacity(0.4),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.info_outline_rounded,
-                color: theme.colorScheme.onSurfaceVariant),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'No office location set. Tap "Set Office Location" to save your current GPS coordinates as the office.',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              ),
-            ),
-          ],
-        ),
-      );
+      return buildNoOfficeLocationPlaceholder(context);
     }
 
     return Container(
@@ -284,7 +237,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                 ?.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
-          _buildInfoRow(
+          buildInfoRow(
             context,
             icon: Icons.my_location_rounded,
             label: 'Coordinates',
@@ -292,15 +245,16 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             '${state.officeLocation!.latitude.toStringAsFixed(6)}, ${state.officeLocation!.longitude.toStringAsFixed(6)}',
           ),
           const SizedBox(height: 6),
-          _buildInfoRow(
+          buildInfoRow(
             context,
             icon: Icons.calendar_today_rounded,
             label: 'Saved at',
-            value: DateTimeFormatter.formatDateTime(state.officeLocation!.savedAt),
+            value:
+            DateTimeFormatter.formatDateTime(state.officeLocation!.savedAt),
           ),
           if (state.userLocation != null) ...[
             const SizedBox(height: 6),
-            _buildInfoRow(
+            buildInfoRow(
               context,
               icon: Icons.person_pin_circle_rounded,
               label: 'Your location',
@@ -313,52 +267,24 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     );
   }
 
-  Widget _buildInfoRow(
-      BuildContext context, {
-        required IconData icon,
-        required String label,
-        required String value,
-      }) {
+  Widget buildNoOfficeLocationPlaceholder(BuildContext context) {
     final theme = Theme.of(context);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 16, color: theme.colorScheme.primary),
-        const SizedBox(width: 8),
-        Text(
-          '$label: ',
-          style: theme.textTheme.bodySmall
-              ?.copyWith(fontWeight: FontWeight.w600),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            style: theme.textTheme.bodySmall,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildErrorBanner(BuildContext context, String message) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.errorContainer,
-        borderRadius: BorderRadius.circular(12),
+        color: theme.colorScheme.surfaceVariant.withOpacity(0.4),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
         children: [
-          Icon(Icons.error_outline_rounded,
-              color: Theme.of(context).colorScheme.error, size: 20),
-          const SizedBox(width: 10),
+          Icon(Icons.info_outline_rounded,
+              color: theme.colorScheme.onSurfaceVariant),
+          const SizedBox(width: 12),
           Expanded(
             child: Text(
-              message,
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onErrorContainer,
-                fontSize: 13,
-              ),
+              'No office location set. Tap "Set Office Location" to save your current GPS coordinates.',
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
           ),
         ],
@@ -366,7 +292,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     );
   }
 
-  Widget _buildAttendanceHistory(BuildContext context, AttendanceState state) {
+  Widget buildAttendanceHistoryList(
+      BuildContext context, AttendanceState state) {
     final theme = Theme.of(context);
 
     return Column(
@@ -384,50 +311,280 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           itemCount: state.attendanceHistory.length,
           separatorBuilder: (_, __) => const SizedBox(height: 8),
           itemBuilder: (context, index) {
-            final record = state.attendanceHistory[index];
-            return Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceVariant.withOpacity(0.3),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                    color: Colors.green.withOpacity(0.3)),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.check_rounded,
-                        color: Colors.green, size: 18),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          DateTimeFormatter.formatDateTime(record.markedAt),
-                          style: theme.textTheme.bodyMedium
-                              ?.copyWith(fontWeight: FontWeight.w600),
-                        ),
-                        Text(
-                          '${record.distanceFromOffice.toStringAsFixed(1)}m from office',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            );
+            final AttendanceRecord record = state.attendanceHistory[index];
+            return buildSingleHistoryItem(context, record, theme);
           },
         ),
       ],
     );
+  }
+
+  // ─── Small Reusable Widgets ───────────────────────────────────────────────
+
+  Widget buildInfoRow(
+      BuildContext context, {
+        required IconData icon,
+        required String label,
+        required String value,
+      }) {
+    final theme = Theme.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: theme.colorScheme.primary),
+        const SizedBox(width: 8),
+        Text(
+          '$label: ',
+          style:
+          theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
+        ),
+        Expanded(
+          child: Text(value, style: theme.textTheme.bodySmall),
+        ),
+      ],
+    );
+  }
+
+  Widget buildErrorBanner(BuildContext context, String message) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.errorContainer,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.error_outline_rounded,
+              color: theme.colorScheme.error, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                color: theme.colorScheme.onErrorContainer,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildSingleHistoryItem(
+      BuildContext context,
+      AttendanceRecord record,
+      ThemeData theme,
+      ) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceVariant.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.green.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.green.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.check_rounded,
+                color: Colors.green, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  DateTimeFormatter.formatDateTime(record.markedAt),
+                  style: theme.textTheme.bodyMedium
+                      ?.copyWith(fontWeight: FontWeight.w600),
+                ),
+                Text(
+                  '${record.distanceFromOffice.toStringAsFixed(1)}m from office',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Success Dialog ───────────────────────────────────────────────────────
+
+  /// Shows a success popup with the marked time and distance from office.
+  /// Tapping "Back to Home" closes the dialog then pops back to the home screen.
+  void showAttendanceSuccessDialog(
+      BuildContext context, AttendanceState state) {
+    final AttendanceRecord? latestRecord = state.attendanceHistory.isNotEmpty
+        ? state.attendanceHistory.first
+        : null;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return Dialog(
+          shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                buildSuccessIconCircle(),
+                const SizedBox(height: 20),
+                buildSuccessTitleText(),
+                const SizedBox(height: 8),
+                buildSuccessSubtitleText(),
+                if (latestRecord != null) ...[
+                  const SizedBox(height: 20),
+                  buildAttendanceDetailCard(context, latestRecord),
+                ],
+                const SizedBox(height: 28),
+                buildBackToHomeButton(context, dialogContext),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget buildSuccessIconCircle() {
+    return Container(
+      width: 80,
+      height: 80,
+      decoration: BoxDecoration(
+        color: Colors.green.withOpacity(0.1),
+        shape: BoxShape.circle,
+      ),
+      child: const Icon(
+        Icons.check_circle_rounded,
+        color: Colors.green,
+        size: 48,
+      ),
+    );
+  }
+
+  Widget buildSuccessTitleText() {
+    return const Text(
+      'Attendance Marked!',
+      style: TextStyle(
+        fontSize: 22,
+        fontWeight: FontWeight.bold,
+        color: Colors.green,
+      ),
+    );
+  }
+
+  Widget buildSuccessSubtitleText() {
+    return Text(
+      'Your attendance has been recorded successfully.',
+      textAlign: TextAlign.center,
+      style: TextStyle(
+        fontSize: 14,
+        color: Colors.grey.shade600,
+      ),
+    );
+  }
+
+  Widget buildAttendanceDetailCard(
+      BuildContext context, AttendanceRecord record) {
+    final theme = Theme.of(context);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.green.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.green.withOpacity(0.2)),
+      ),
+      child: Column(
+        children: [
+          buildDetailRow(
+            icon: Icons.access_time_rounded,
+            label: 'Time',
+            value: DateTimeFormatter.formatDateTime(record.markedAt),
+            theme: theme,
+          ),
+          const SizedBox(height: 8),
+          buildDetailRow(
+            icon: Icons.social_distance_rounded,
+            label: 'Distance',
+            value:
+            '${record.distanceFromOffice.toStringAsFixed(1)} m from office',
+            theme: theme,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildDetailRow({
+    required IconData icon,
+    required String label,
+    required String value,
+    required ThemeData theme,
+  }) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: Colors.green),
+        const SizedBox(width: 8),
+        Text(
+          '$label: ',
+          style:
+          theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
+        ),
+        Expanded(
+          child: Text(value, style: theme.textTheme.bodySmall),
+        ),
+      ],
+    );
+  }
+
+  /// Closes the dialog first, then pops the attendance screen back to home.
+  Widget buildBackToHomeButton(
+      BuildContext context, BuildContext dialogContext) {
+    return SizedBox(
+      width: double.infinity,
+      height: 48,
+      child: ElevatedButton.icon(
+        onPressed: () {
+          Navigator.of(dialogContext).pop(); // close the dialog
+          Navigator.of(context).pop();       // go back to home screen
+        },
+        icon: const Icon(Icons.home_rounded, size: 20),
+        label: const Text(
+          'Back to Home',
+          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.green,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ─── Pure Helpers ─────────────────────────────────────────────────────────
+
+  /// Returns the correct status message for the header card.
+  String resolveGeofenceStatusMessage(AttendanceState state) {
+    if (state.officeLocation == null) return 'No office location set';
+    if (state.isUserInsideGeofence) return 'You are at the office ✅';
+    return 'Outside office zone';
   }
 }

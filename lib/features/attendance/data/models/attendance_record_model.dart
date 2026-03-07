@@ -20,12 +20,12 @@ class AttendanceRecordModel extends AttendanceRecord {
   }
 
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'latitude': latitude,
-    'longitude': longitude,
-    'markedAt': markedAt.toIso8601String(),
-    'distanceFromOffice': distanceFromOffice,
-  };
+        'id': id,
+        'latitude': latitude,
+        'longitude': longitude,
+        'markedAt': markedAt.toIso8601String(),
+        'distanceFromOffice': distanceFromOffice,
+      };
 
   factory AttendanceRecordModel.fromEntity(AttendanceRecord entity) {
     return AttendanceRecordModel(

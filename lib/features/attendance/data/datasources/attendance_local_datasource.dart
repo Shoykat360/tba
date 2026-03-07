@@ -8,10 +8,10 @@ import '../models/attendance_record_model.dart';
 import '../models/office_location_model.dart';
 
 abstract class AttendanceLocalDataSource {
-  Future<void> saveOfficeLocation(OfficeLocationModel location);
-  Future<OfficeLocationModel> loadOfficeLocation();
-  Future<void> saveAttendanceRecord(AttendanceRecordModel record);
-  Future<List<AttendanceRecordModel>> getAttendanceRecords();
+  Future<void> saveOfficeLocationToStorage(OfficeLocationModel location);
+  Future<OfficeLocationModel> readOfficeLocationFromStorage();
+  Future<void> saveAttendanceRecordToStorage(AttendanceRecordModel record);
+  Future<List<AttendanceRecordModel>> readAllAttendanceRecordsFromStorage();
 }
 
 class AttendanceLocalDataSourceImpl implements AttendanceLocalDataSource {
@@ -20,23 +20,26 @@ class AttendanceLocalDataSourceImpl implements AttendanceLocalDataSource {
   AttendanceLocalDataSourceImpl(this.sharedPreferences);
 
   @override
-  Future<void> saveOfficeLocation(OfficeLocationModel location) async {
+  Future<void> saveOfficeLocationToStorage(OfficeLocationModel location) async {
     try {
-      final jsonString = jsonEncode(location.toJson());
-      await sharedPreferences.setString(AppConstants.officeLocationKey, jsonString);
+      final String encodedJson = jsonEncode(location.toJson());
+      await sharedPreferences.setString(AppConstants.officeLocationKey, encodedJson);
     } catch (e) {
       throw const LocalStorageException('Failed to save office location.');
     }
   }
 
   @override
-  Future<OfficeLocationModel> loadOfficeLocation() async {
+  Future<OfficeLocationModel> readOfficeLocationFromStorage() async {
     try {
-      final jsonString = sharedPreferences.getString(AppConstants.officeLocationKey);
-      if (jsonString == null) {
+      final String? encodedJson =
+          sharedPreferences.getString(AppConstants.officeLocationKey);
+
+      if (encodedJson == null) {
         throw const LocalStorageException('No office location saved.');
       }
-      return OfficeLocationModel.fromJson(jsonDecode(jsonString));
+
+      return OfficeLocationModel.fromJson(jsonDecode(encodedJson));
     } on LocalStorageException {
       rethrow;
     } catch (e) {
@@ -45,13 +48,14 @@ class AttendanceLocalDataSourceImpl implements AttendanceLocalDataSource {
   }
 
   @override
-  Future<void> saveAttendanceRecord(AttendanceRecordModel record) async {
+  Future<void> saveAttendanceRecordToStorage(AttendanceRecordModel record) async {
     try {
-      final existing = await _getRawRecords();
-      existing.add(record.toJson());
+      final List<Map<String, dynamic>> existingRecords =
+          await readRawRecordsFromStorage();
+      existingRecords.add(record.toJson());
       await sharedPreferences.setString(
         AppConstants.attendanceRecordsKey,
-        jsonEncode(existing),
+        jsonEncode(existingRecords),
       );
     } catch (e) {
       throw const LocalStorageException('Failed to save attendance record.');
@@ -59,19 +63,23 @@ class AttendanceLocalDataSourceImpl implements AttendanceLocalDataSource {
   }
 
   @override
-  Future<List<AttendanceRecordModel>> getAttendanceRecords() async {
+  Future<List<AttendanceRecordModel>> readAllAttendanceRecordsFromStorage() async {
     try {
-      final raw = await _getRawRecords();
-      return raw.map((e) => AttendanceRecordModel.fromJson(e)).toList();
+      final List<Map<String, dynamic>> rawRecords =
+          await readRawRecordsFromStorage();
+      return rawRecords
+          .map((rawRecord) => AttendanceRecordModel.fromJson(rawRecord))
+          .toList();
     } catch (e) {
       throw const LocalStorageException('Failed to load attendance records.');
     }
   }
 
-  Future<List<Map<String, dynamic>>> _getRawRecords() async {
-    final jsonString = sharedPreferences.getString(AppConstants.attendanceRecordsKey);
-    if (jsonString == null) return [];
-    final List<dynamic> decoded = jsonDecode(jsonString);
-    return decoded.cast<Map<String, dynamic>>();
+  Future<List<Map<String, dynamic>>> readRawRecordsFromStorage() async {
+    final String? encodedJson =
+        sharedPreferences.getString(AppConstants.attendanceRecordsKey);
+    if (encodedJson == null) return [];
+    final List<dynamic> decodedList = jsonDecode(encodedJson);
+    return decodedList.cast<Map<String, dynamic>>();
   }
 }

@@ -23,8 +23,9 @@ class AttendanceRepositoryImpl implements AttendanceRepository {
   @override
   Future<Either<Failure, UserLocation>> fetchCurrentLocation() async {
     try {
-      final location = await locationDataSource.getCurrentLocation();
-      return Right(location);
+      final UserLocation userLocation =
+          await locationDataSource.fetchLiveGpsLocation();
+      return Right(userLocation);
     } on LocationPermissionException catch (e) {
       return Left(LocationPermissionFailure(e.message));
     } on LocationServiceDisabledException catch (e) {
@@ -37,9 +38,10 @@ class AttendanceRepositoryImpl implements AttendanceRepository {
   }
 
   @override
-  Future<Either<Failure, Unit>> saveOfficeLocation(OfficeLocation location) async {
+  Future<Either<Failure, Unit>> saveOfficeLocation(
+      OfficeLocation location) async {
     try {
-      await localDataSource.saveOfficeLocation(
+      await localDataSource.saveOfficeLocationToStorage(
         OfficeLocationModel.fromEntity(location),
       );
       return const Right(unit);
@@ -51,8 +53,9 @@ class AttendanceRepositoryImpl implements AttendanceRepository {
   @override
   Future<Either<Failure, OfficeLocation>> loadSavedOfficeLocation() async {
     try {
-      final model = await localDataSource.loadOfficeLocation();
-      return Right(model);
+      final OfficeLocationModel officeLocation =
+          await localDataSource.readOfficeLocationFromStorage();
+      return Right(officeLocation);
     } on LocalStorageException catch (e) {
       if (e.message.contains('No office location')) {
         return const Left(NoSavedLocationFailure());
@@ -62,9 +65,10 @@ class AttendanceRepositoryImpl implements AttendanceRepository {
   }
 
   @override
-  Future<Either<Failure, Unit>> markAttendance(AttendanceRecord record) async {
+  Future<Either<Failure, Unit>> markAttendance(
+      AttendanceRecord record) async {
     try {
-      await localDataSource.saveAttendanceRecord(
+      await localDataSource.saveAttendanceRecordToStorage(
         AttendanceRecordModel.fromEntity(record),
       );
       return const Right(unit);
@@ -74,9 +78,11 @@ class AttendanceRepositoryImpl implements AttendanceRepository {
   }
 
   @override
-  Future<Either<Failure, List<AttendanceRecord>>> getAttendanceHistory() async {
+  Future<Either<Failure, List<AttendanceRecord>>>
+      getAttendanceHistory() async {
     try {
-      final records = await localDataSource.getAttendanceRecords();
+      final List<AttendanceRecordModel> records =
+          await localDataSource.readAllAttendanceRecordsFromStorage();
       return Right(records);
     } on LocalStorageException catch (e) {
       return Left(LocalStorageFailure(e.message));

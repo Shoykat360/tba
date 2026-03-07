@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 class AttendanceActionButton extends StatelessWidget {
   final bool canMarkAttendance;
   final bool isLoading;
-  final VoidCallback? onPressed;
+  final VoidCallback onPressed;
 
   const AttendanceActionButton({
     super.key,
@@ -18,37 +18,50 @@ class AttendanceActionButton extends StatelessWidget {
 
     return SizedBox(
       width: double.infinity,
-      height: 56,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        child: ElevatedButton.icon(
-          onPressed: canMarkAttendance && !isLoading ? onPressed : null,
-          icon: isLoading
-              ? SizedBox(
-            width: 20,
-            height: 20,
-            child: CircularProgressIndicator(
-              strokeWidth: 2.5,
-              color: theme.colorScheme.onPrimary,
-            ),
-          )
-              : const Icon(Icons.fingerprint_rounded, size: 24),
-          label: Text(
-            isLoading ? 'Marking...' : 'Mark Attendance',
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+      height: 52,
+      child: ElevatedButton(
+        onPressed: canMarkAttendance && !isLoading ? onPressed : null,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: canMarkAttendance
+              ? Colors.green
+              : theme.colorScheme.surfaceVariant,
+          foregroundColor: canMarkAttendance
+              ? Colors.white
+              : theme.colorScheme.onSurfaceVariant,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
           ),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: canMarkAttendance
-                ? Colors.green
-                : theme.colorScheme.surfaceVariant,
-            foregroundColor: canMarkAttendance
-                ? Colors.white
-                : theme.colorScheme.onSurfaceVariant,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            elevation: canMarkAttendance ? 2 : 0,
+          elevation: canMarkAttendance ? 2 : 0,
+        ),
+        child: isLoading
+            ? const SizedBox(
+          width: 22,
+          height: 22,
+          child: CircularProgressIndicator(
+            color: Colors.white,
+            strokeWidth: 2.5,
           ),
+        )
+            : Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              canMarkAttendance
+                  ? Icons.check_circle_outline_rounded
+                  : Icons.lock_outline_rounded,
+              size: 20,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Mark Attendance',
+              style: theme.textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: canMarkAttendance
+                    ? Colors.white
+                    : theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
         ),
       ),
     );

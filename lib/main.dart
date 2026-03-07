@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import 'core/di/injection_container.dart' as di;
-import 'features/attendance/presentation/pages/home_screen.dart';
 import 'features/camera/data/background/background_upload_worker.dart';
+import 'features/ui_showcase/presentation/pages/home_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

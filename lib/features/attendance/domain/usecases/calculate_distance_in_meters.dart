@@ -1,39 +1,46 @@
 import 'package:dartz/dartz.dart';
 import 'package:equatable/equatable.dart';
+
 import '../../../../core/error/failures.dart';
 import '../../../../core/usecases/usecase.dart';
 import '../services/geofence_calculator_service.dart';
 
 class CalculateDistanceInMeters extends UseCase<double, CalculateDistanceParams> {
-  final GeofenceCalculatorService calculatorService;
+  final GeofenceCalculatorService geofenceCalculatorService;
 
-  CalculateDistanceInMeters(this.calculatorService);
+  CalculateDistanceInMeters(this.geofenceCalculatorService);
 
   @override
   Future<Either<Failure, double>> call(CalculateDistanceParams params) async {
-    final distance = calculatorService.calculateDistanceInMeters(
-      lat1: params.userLat,
-      lon1: params.userLon,
-      lat2: params.officeLat,
-      lon2: params.officeLon,
+    final double distanceInMeters =
+        geofenceCalculatorService.distanceBetweenTwoCoordinatesInMeters(
+      fromLatitude: params.userLatitude,
+      fromLongitude: params.userLongitude,
+      toLatitude: params.officeLatitude,
+      toLongitude: params.officeLongitude,
     );
-    return Right(distance);
+    return Right(distanceInMeters);
   }
 }
 
 class CalculateDistanceParams extends Equatable {
-  final double userLat;
-  final double userLon;
-  final double officeLat;
-  final double officeLon;
+  final double userLatitude;
+  final double userLongitude;
+  final double officeLatitude;
+  final double officeLongitude;
 
   const CalculateDistanceParams({
-    required this.userLat,
-    required this.userLon,
-    required this.officeLat,
-    required this.officeLon,
+    required this.userLatitude,
+    required this.userLongitude,
+    required this.officeLatitude,
+    required this.officeLongitude,
   });
 
   @override
-  List<Object> get props => [userLat, userLon, officeLat, officeLon];
+  List<Object> get props => [
+        userLatitude,
+        userLongitude,
+        officeLatitude,
+        officeLongitude,
+      ];
 }

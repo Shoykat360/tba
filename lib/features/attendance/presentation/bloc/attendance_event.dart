@@ -7,18 +7,26 @@ abstract class AttendanceEvent extends Equatable {
   List<Object> get props => [];
 }
 
-class InitializeAttendanceEvent extends AttendanceEvent {
-  const InitializeAttendanceEvent();
+/// Fired once when the attendance screen is first opened.
+/// Loads saved office location and fetches the user's current GPS position.
+class InitializeAttendanceScreen extends AttendanceEvent {
+  const InitializeAttendanceScreen();
 }
 
-class SetOfficeLocationEvent extends AttendanceEvent {
-  const SetOfficeLocationEvent();
+/// Fired when the user taps "Set Office Location".
+/// Saves the current GPS coordinates as the office location.
+class SaveCurrentLocationAsOffice extends AttendanceEvent {
+  const SaveCurrentLocationAsOffice();
 }
 
-class RefreshUserLocationEvent extends AttendanceEvent {
-  const RefreshUserLocationEvent();
+/// Fired when the user pulls to refresh or taps the refresh icon.
+/// Re-fetches the user's current GPS position.
+class RefreshCurrentUserLocation extends AttendanceEvent {
+  const RefreshCurrentUserLocation();
 }
 
-class MarkAttendanceEvent extends AttendanceEvent {
-  const MarkAttendanceEvent();
+/// Fired when the user taps "Mark Attendance".
+/// Saves a new attendance record if the user is inside the geofence.
+class ConfirmAttendanceMarking extends AttendanceEvent {
+  const ConfirmAttendanceMarking();
 }

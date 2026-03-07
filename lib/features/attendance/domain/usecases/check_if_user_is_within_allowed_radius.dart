@@ -1,30 +1,32 @@
 import 'package:dartz/dartz.dart';
 import 'package:equatable/equatable.dart';
+
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/error/failures.dart';
 import '../../../../core/usecases/usecase.dart';
 import '../services/geofence_calculator_service.dart';
 
 class CheckIfUserIsWithinAllowedRadius
-    extends UseCase<bool, CheckRadiusParams> {
-  final GeofenceCalculatorService calculatorService;
+    extends UseCase<bool, CheckAllowedRadiusParams> {
+  final GeofenceCalculatorService geofenceCalculatorService;
 
-  CheckIfUserIsWithinAllowedRadius(this.calculatorService);
+  CheckIfUserIsWithinAllowedRadius(this.geofenceCalculatorService);
 
   @override
-  Future<Either<Failure, bool>> call(CheckRadiusParams params) async {
-    final isWithin = calculatorService.isWithinRadius(
+  Future<Either<Failure, bool>> call(CheckAllowedRadiusParams params) async {
+    final bool isInsideRadius =
+        geofenceCalculatorService.isUserInsideGeofenceRadius(
       distanceInMeters: params.distanceInMeters,
-      radiusInMeters: AppConstants.geofenceRadiusMeters,
+      allowedRadiusInMeters: AppConstants.geofenceRadiusMeters,
     );
-    return Right(isWithin);
+    return Right(isInsideRadius);
   }
 }
 
-class CheckRadiusParams extends Equatable {
+class CheckAllowedRadiusParams extends Equatable {
   final double distanceInMeters;
 
-  const CheckRadiusParams(this.distanceInMeters);
+  const CheckAllowedRadiusParams(this.distanceInMeters);
 
   @override
   List<Object> get props => [distanceInMeters];

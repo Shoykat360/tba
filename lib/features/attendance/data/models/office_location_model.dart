@@ -1,4 +1,3 @@
-
 import '../../domain/entities/office_location.dart';
 
 class OfficeLocationModel extends OfficeLocation {
@@ -17,10 +16,10 @@ class OfficeLocationModel extends OfficeLocation {
   }
 
   Map<String, dynamic> toJson() => {
-    'latitude': latitude,
-    'longitude': longitude,
-    'savedAt': savedAt.toIso8601String(),
-  };
+        'latitude': latitude,
+        'longitude': longitude,
+        'savedAt': savedAt.toIso8601String(),
+      };
 
   factory OfficeLocationModel.fromEntity(OfficeLocation entity) {
     return OfficeLocationModel(

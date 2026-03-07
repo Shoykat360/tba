@@ -1,5 +1,6 @@
 import 'package:dartz/dartz.dart';
 import 'package:equatable/equatable.dart';
+
 import '../../../../core/error/failures.dart';
 import '../../../../core/usecases/usecase.dart';
 import '../entities/attendance_record.dart';
@@ -12,14 +13,15 @@ class MarkAttendance extends UseCase<Unit, MarkAttendanceParams> {
 
   @override
   Future<Either<Failure, Unit>> call(MarkAttendanceParams params) {
-    return repository.markAttendance(params.record);
+    return repository.markAttendance(params.attendanceRecord);
   }
 }
 
 class MarkAttendanceParams extends Equatable {
-  final AttendanceRecord record;
-  const MarkAttendanceParams(this.record);
+  final AttendanceRecord attendanceRecord;
+
+  const MarkAttendanceParams(this.attendanceRecord);
 
   @override
-  List<Object> get props => [record];
+  List<Object> get props => [attendanceRecord];
 }

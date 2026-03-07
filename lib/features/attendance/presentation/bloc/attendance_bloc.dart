@@ -1,4 +1,3 @@
-import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/usecases/usecase.dart';
@@ -13,6 +12,7 @@ import '../../domain/usecases/mark_attendance.dart';
 import '../../domain/usecases/save_office_location_locally.dart';
 import 'attendance_event.dart';
 import 'attendance_state.dart';
+
 class AttendanceBloc extends Bloc<AttendanceEvent, AttendanceState> {
   final FetchCurrentLocation fetchCurrentLocation;
   final SaveOfficeLocationLocally saveOfficeLocationLocally;
@@ -29,43 +29,44 @@ class AttendanceBloc extends Bloc<AttendanceEvent, AttendanceState> {
     required this.checkIfUserIsWithinAllowedRadius,
     required this.markAttendance,
   }) : super(const AttendanceState()) {
-    on<InitializeAttendanceEvent>(_onInitialize);
-    on<SetOfficeLocationEvent>(_onSetOfficeLocation);
-    on<RefreshUserLocationEvent>(_onRefreshUserLocation);
-    on<MarkAttendanceEvent>(_onMarkAttendance);
+    on<InitializeAttendanceScreen>(handleScreenInitialization);
+    on<SaveCurrentLocationAsOffice>(handleSaveCurrentLocationAsOffice);
+    on<RefreshCurrentUserLocation>(handleRefreshCurrentUserLocation);
+    on<ConfirmAttendanceMarking>(handleConfirmAttendanceMarking);
   }
 
-  Future<void> _onInitialize(
-      InitializeAttendanceEvent event,
-      Emitter<AttendanceState> emit,
-      ) async {
+  // ─── Event Handlers ──────────────────────────────────────────────────────
+
+  /// Runs once when the screen opens.
+  /// Loads any previously saved office location, then fetches the live GPS position.
+  Future<void> handleScreenInitialization(
+    InitializeAttendanceScreen event,
+    Emitter<AttendanceState> emit,
+  ) async {
     emit(state.copyWith(status: AttendanceStatus.loading));
 
-    // Load saved office location
-    final savedLocationResult = await loadSavedOfficeLocation(NoParams());
-    final savedLocation = savedLocationResult.fold((_) => null, (l) => l);
+    final savedOfficeLocation = await loadOfficeLocationFromStorage();
 
-    // Fetch current user location
     final locationResult = await fetchCurrentLocation(NoParams());
 
     await locationResult.fold(
-          (failure) async {
+      (failure) async {
         emit(state.copyWith(
           status: AttendanceStatus.failure,
-          officeLocation: savedLocation,
-          locationSetStatus: savedLocation != null
-              ? LocationSetStatus.set
+          officeLocation: savedOfficeLocation,
+          locationSetStatus: savedOfficeLocation != null
+              ? LocationSetStatus.saved
               : LocationSetStatus.notSet,
-          errorMessage: failure.message,
+          generalErrorMessage: failure.message,
         ));
       },
-          (userLocation) async {
-        if (savedLocation != null) {
-          await _emitWithDistanceCalc(
+      (userLocation) async {
+        if (savedOfficeLocation != null) {
+          await calculateDistanceAndEmitUpdatedState(
             emit,
             userLocation: userLocation,
-            officeLocation: savedLocation,
-            locationSetStatus: LocationSetStatus.set,
+            officeLocation: savedOfficeLocation,
+            locationSetStatus: LocationSetStatus.saved,
           );
         } else {
           emit(state.copyWith(
@@ -78,45 +79,43 @@ class AttendanceBloc extends Bloc<AttendanceEvent, AttendanceState> {
     );
   }
 
-  Future<void> _onSetOfficeLocation(
-      SetOfficeLocationEvent event,
-      Emitter<AttendanceState> emit,
-      ) async {
-    emit(state.copyWith(locationSetStatus: LocationSetStatus.setting));
+  /// Handles the user tapping "Set Office Location".
+  /// Fetches the current GPS position and saves it as the office coordinates.
+  Future<void> handleSaveCurrentLocationAsOffice(
+    SaveCurrentLocationAsOffice event,
+    Emitter<AttendanceState> emit,
+  ) async {
+    emit(state.copyWith(locationSetStatus: LocationSetStatus.saving));
 
     final locationResult = await fetchCurrentLocation(NoParams());
 
     await locationResult.fold(
-          (failure) async {
+      (failure) async {
         emit(state.copyWith(
           locationSetStatus: LocationSetStatus.failure,
-          locationSetError: failure.message,
+          locationSaveErrorMessage: failure.message,
         ));
       },
-          (userLocation) async {
-        final officeLocation = OfficeLocation(
-          latitude: userLocation.latitude,
-          longitude: userLocation.longitude,
-          savedAt: DateTime.now(),
-        );
+      (userLocation) async {
+        final OfficeLocation newOfficeLocation = buildOfficeLocationFromUserPosition(userLocation);
 
         final saveResult = await saveOfficeLocationLocally(
-          SaveOfficeLocationParams(officeLocation),
+          SaveOfficeLocationParams(newOfficeLocation),
         );
 
         await saveResult.fold(
-              (failure) async {
+          (failure) async {
             emit(state.copyWith(
               locationSetStatus: LocationSetStatus.failure,
-              locationSetError: failure.message,
+              locationSaveErrorMessage: failure.message,
             ));
           },
-              (_) async {
-            await _emitWithDistanceCalc(
+          (_) async {
+            await calculateDistanceAndEmitUpdatedState(
               emit,
               userLocation: userLocation,
-              officeLocation: officeLocation,
-              locationSetStatus: LocationSetStatus.set,
+              officeLocation: newOfficeLocation,
+              locationSetStatus: LocationSetStatus.saved,
             );
           },
         );
@@ -124,24 +123,29 @@ class AttendanceBloc extends Bloc<AttendanceEvent, AttendanceState> {
     );
   }
 
-  Future<void> _onRefreshUserLocation(
-      RefreshUserLocationEvent event,
-      Emitter<AttendanceState> emit,
-      ) async {
-    emit(state.copyWith(status: AttendanceStatus.loading, clearError: true));
+  /// Handles the user pulling to refresh or tapping the refresh icon.
+  /// Re-fetches GPS and recalculates distance from the saved office.
+  Future<void> handleRefreshCurrentUserLocation(
+    RefreshCurrentUserLocation event,
+    Emitter<AttendanceState> emit,
+  ) async {
+    emit(state.copyWith(
+      status: AttendanceStatus.loading,
+      clearGeneralError: true,
+    ));
 
     final locationResult = await fetchCurrentLocation(NoParams());
 
     await locationResult.fold(
-          (failure) async {
+      (failure) async {
         emit(state.copyWith(
           status: AttendanceStatus.failure,
-          errorMessage: failure.message,
+          generalErrorMessage: failure.message,
         ));
       },
-          (userLocation) async {
+      (userLocation) async {
         if (state.officeLocation != null) {
-          await _emitWithDistanceCalc(
+          await calculateDistanceAndEmitUpdatedState(
             emit,
             userLocation: userLocation,
             officeLocation: state.officeLocation!,
@@ -157,71 +161,106 @@ class AttendanceBloc extends Bloc<AttendanceEvent, AttendanceState> {
     );
   }
 
-  Future<void> _onMarkAttendance(
-      MarkAttendanceEvent event,
-      Emitter<AttendanceState> emit,
-      ) async {
+  /// Handles the user tapping "Mark Attendance".
+  /// Validates the geofence condition, saves the record, and updates history.
+  Future<void> handleConfirmAttendanceMarking(
+    ConfirmAttendanceMarking event,
+    Emitter<AttendanceState> emit,
+  ) async {
     if (!state.canMarkAttendance) return;
 
-    emit(state.copyWith(isMarkingAttendance: true, clearAttendanceSuccess: true));
+    emit(state.copyWith(
+      isSavingAttendance: true,
+      clearAttendanceSuccessFlag: true,
+    ));
 
-    final record = AttendanceRecord(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      latitude: state.userLocation!.latitude,
-      longitude: state.userLocation!.longitude,
-      markedAt: DateTime.now(),
-      distanceFromOffice: state.distanceInMeters ?? 0,
-    );
+    final AttendanceRecord newRecord = buildAttendanceRecordFromCurrentState();
 
-    final result = await markAttendance(MarkAttendanceParams(record));
+    final result = await markAttendance(MarkAttendanceParams(newRecord));
 
     result.fold(
-          (failure) {
+      (failure) {
         emit(state.copyWith(
-          isMarkingAttendance: false,
-          errorMessage: failure.message,
+          isSavingAttendance: false,
+          generalErrorMessage: failure.message,
         ));
       },
-          (_) {
-        final updatedHistory = [record, ...state.attendanceHistory];
+      (_) {
+        final List<AttendanceRecord> updatedHistory = [
+          newRecord,
+          ...state.attendanceHistory,
+        ];
         emit(state.copyWith(
-          isMarkingAttendance: false,
-          attendanceMarkedSuccessfully: true,
+          isSavingAttendance: false,
+          attendanceJustMarkedSuccessfully: true,
           attendanceHistory: updatedHistory,
         ));
       },
     );
   }
 
-  Future<void> _emitWithDistanceCalc(
-      Emitter<AttendanceState> emit, {
-        required UserLocation userLocation,
-        required OfficeLocation officeLocation,
-        required LocationSetStatus locationSetStatus,
-      }) async {
+  // ─── Private Helpers ─────────────────────────────────────────────────────
+
+  /// Loads the saved office location from storage.
+  /// Returns null if nothing has been saved yet.
+  Future<OfficeLocation?> loadOfficeLocationFromStorage() async {
+    final result = await loadSavedOfficeLocation(NoParams());
+    return result.fold((_) => null, (location) => location);
+  }
+
+  /// Builds an OfficeLocation entity from a live UserLocation snapshot.
+  OfficeLocation buildOfficeLocationFromUserPosition(UserLocation userLocation) {
+    return OfficeLocation(
+      latitude: userLocation.latitude,
+      longitude: userLocation.longitude,
+      savedAt: DateTime.now(),
+    );
+  }
+
+  /// Builds an AttendanceRecord from the current BLoC state.
+  AttendanceRecord buildAttendanceRecordFromCurrentState() {
+    return AttendanceRecord(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      latitude: state.userLocation!.latitude,
+      longitude: state.userLocation!.longitude,
+      markedAt: DateTime.now(),
+      distanceFromOffice: state.distanceFromOfficeInMeters ?? 0,
+    );
+  }
+
+  /// Calculates the distance between the user and the office,
+  /// checks whether the user is inside the geofence
+  Future<void> calculateDistanceAndEmitUpdatedState(
+    Emitter<AttendanceState> emit, {
+    required UserLocation userLocation,
+    required OfficeLocation officeLocation,
+    required LocationSetStatus locationSetStatus,
+  }) async {
     final distanceResult = await calculateDistanceInMeters(
       CalculateDistanceParams(
-        userLat: userLocation.latitude,
-        userLon: userLocation.longitude,
-        officeLat: officeLocation.latitude,
-        officeLon: officeLocation.longitude,
+        userLatitude: userLocation.latitude,
+        userLongitude: userLocation.longitude,
+        officeLatitude: officeLocation.latitude,
+        officeLongitude: officeLocation.longitude,
       ),
     );
 
-    final distance = distanceResult.fold((_) => 0.0, (d) => d);
+    final double distanceInMeters =
+        distanceResult.fold((_) => 0.0, (distance) => distance);
 
-    final withinResult = await checkIfUserIsWithinAllowedRadius(
-      CheckRadiusParams(distance),
+    final geofenceResult = await checkIfUserIsWithinAllowedRadius(
+      CheckAllowedRadiusParams(distanceInMeters),
     );
-    final isWithin = withinResult.fold((_) => false, (w) => w);
+    final bool isInsideGeofence =
+        geofenceResult.fold((_) => false, (isInside) => isInside);
 
     emit(state.copyWith(
       status: AttendanceStatus.loaded,
       locationSetStatus: locationSetStatus,
       userLocation: userLocation,
       officeLocation: officeLocation,
-      distanceInMeters: distance,
-      isWithinRadius: isWithin,
+      distanceFromOfficeInMeters: distanceInMeters,
+      isUserInsideGeofence: isInsideGeofence,
     ));
   }
 }

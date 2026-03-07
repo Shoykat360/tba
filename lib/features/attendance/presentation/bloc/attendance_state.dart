@@ -4,8 +4,9 @@ import '../../domain/entities/attendance_record.dart';
 import '../../domain/entities/office_location.dart';
 import '../../domain/entities/user_location.dart';
 
-enum AttendanceStatus { initial, loading, loaded, success, failure }
-enum LocationSetStatus { notSet, setting, set, failure }
+enum AttendanceStatus { initial, loading, loaded, failure }
+
+enum LocationSetStatus { notSet, saving, saved, failure }
 
 class AttendanceState extends Equatable {
   final AttendanceStatus status;
@@ -14,86 +15,92 @@ class AttendanceState extends Equatable {
   // Location data
   final UserLocation? userLocation;
   final OfficeLocation? officeLocation;
-  final double? distanceInMeters;
-  final bool isWithinRadius;
+  final double? distanceFromOfficeInMeters;
+  final bool isUserInsideGeofence;
 
   // Attendance
   final List<AttendanceRecord> attendanceHistory;
-  final bool isMarkingAttendance;
-  final bool attendanceMarkedSuccessfully;
+  final bool isSavingAttendance;
+  final bool attendanceJustMarkedSuccessfully;
 
-  // Error
-  final String? errorMessage;
-  final String? locationSetError;
+  // Errors
+  final String? generalErrorMessage;
+  final String? locationSaveErrorMessage;
 
   const AttendanceState({
     this.status = AttendanceStatus.initial,
     this.locationSetStatus = LocationSetStatus.notSet,
     this.userLocation,
     this.officeLocation,
-    this.distanceInMeters,
-    this.isWithinRadius = false,
+    this.distanceFromOfficeInMeters,
+    this.isUserInsideGeofence = false,
     this.attendanceHistory = const [],
-    this.isMarkingAttendance = false,
-    this.attendanceMarkedSuccessfully = false,
-    this.errorMessage,
-    this.locationSetError,
+    this.isSavingAttendance = false,
+    this.attendanceJustMarkedSuccessfully = false,
+    this.generalErrorMessage,
+    this.locationSaveErrorMessage,
   });
 
+  /// True only when all conditions are met for marking attendance.
   bool get canMarkAttendance =>
-      isWithinRadius &&
-          officeLocation != null &&
-          userLocation != null &&
-          !isMarkingAttendance;
+      isUserInsideGeofence &&
+      officeLocation != null &&
+      userLocation != null &&
+      !isSavingAttendance;
 
   AttendanceState copyWith({
     AttendanceStatus? status,
     LocationSetStatus? locationSetStatus,
     UserLocation? userLocation,
     OfficeLocation? officeLocation,
-    double? distanceInMeters,
-    bool? isWithinRadius,
+    double? distanceFromOfficeInMeters,
+    bool? isUserInsideGeofence,
     List<AttendanceRecord>? attendanceHistory,
-    bool? isMarkingAttendance,
-    bool? attendanceMarkedSuccessfully,
-    String? errorMessage,
-    String? locationSetError,
-    bool clearError = false,
-    bool clearLocationSetError = false,
-    bool clearAttendanceSuccess = false,
-    bool clearDistance = false,
+    bool? isSavingAttendance,
+    bool? attendanceJustMarkedSuccessfully,
+    String? generalErrorMessage,
+    String? locationSaveErrorMessage,
+    bool clearGeneralError = false,
+    bool clearLocationSaveError = false,
+    bool clearAttendanceSuccessFlag = false,
+    bool clearDistanceData = false,
   }) {
     return AttendanceState(
       status: status ?? this.status,
       locationSetStatus: locationSetStatus ?? this.locationSetStatus,
       userLocation: userLocation ?? this.userLocation,
       officeLocation: officeLocation ?? this.officeLocation,
-      distanceInMeters: clearDistance ? null : (distanceInMeters ?? this.distanceInMeters),
-      isWithinRadius: isWithinRadius ?? this.isWithinRadius,
-      attendanceHistory: attendanceHistory ?? this.attendanceHistory,
-      isMarkingAttendance: isMarkingAttendance ?? this.isMarkingAttendance,
-      attendanceMarkedSuccessfully: clearAttendanceSuccess
-          ? false
-          : (attendanceMarkedSuccessfully ?? this.attendanceMarkedSuccessfully),
-      errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
-      locationSetError: clearLocationSetError
+      distanceFromOfficeInMeters: clearDistanceData
           ? null
-          : (locationSetError ?? this.locationSetError),
+          : (distanceFromOfficeInMeters ?? this.distanceFromOfficeInMeters),
+      isUserInsideGeofence: isUserInsideGeofence ?? this.isUserInsideGeofence,
+      attendanceHistory: attendanceHistory ?? this.attendanceHistory,
+      isSavingAttendance: isSavingAttendance ?? this.isSavingAttendance,
+      attendanceJustMarkedSuccessfully: clearAttendanceSuccessFlag
+          ? false
+          : (attendanceJustMarkedSuccessfully ??
+              this.attendanceJustMarkedSuccessfully),
+      generalErrorMessage: clearGeneralError
+          ? null
+          : (generalErrorMessage ?? this.generalErrorMessage),
+      locationSaveErrorMessage: clearLocationSaveError
+          ? null
+          : (locationSaveErrorMessage ?? this.locationSaveErrorMessage),
     );
   }
 
   @override
   List<Object?> get props => [
-    status,
-    locationSetStatus,
-    userLocation,
-    officeLocation,
-    distanceInMeters,
-    isWithinRadius,
-    attendanceHistory,
-    isMarkingAttendance,
-    attendanceMarkedSuccessfully,
-    errorMessage,
-    locationSetError,
-  ];
+        status,
+        locationSetStatus,
+        userLocation,
+        officeLocation,
+        distanceFromOfficeInMeters,
+        isUserInsideGeofence,
+        attendanceHistory,
+        isSavingAttendance,
+        attendanceJustMarkedSuccessfully,
+        generalErrorMessage,
+        locationSaveErrorMessage,
+      ];
 }

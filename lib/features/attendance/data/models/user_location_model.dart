@@ -8,7 +8,7 @@ class UserLocationModel extends UserLocation {
     required super.fetchedAt,
   });
 
-  factory UserLocationModel.fromGeolocator({
+  factory UserLocationModel.fromGeolocatorPosition({
     required double latitude,
     required double longitude,
     double? accuracy,
