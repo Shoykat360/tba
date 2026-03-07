@@ -213,21 +213,23 @@ adb logcat | grep -E "\[AttendanceBloc\]|\[GeofenceService\]"
 
 ## 📸 Screenshots
 
+## 📸 Screenshots
+
 ### Task 1 — Attendance
-| Home Screen | Permission & Set Location |
-|-------------|--------------------------|
-| ![Home](screenshots/home.jpeg) | ![Set Office Location](screenshots/t1.jpeg) |
-| Attendance Screen | Distance Indicator / Mark Button |
-| ![Attendance Screen](screenshots/t2.jpeg) | ![Mark Attendance](screenshots/t3.jpeg) |
+|                                |                            |
+|--------------------------------|----------------------------|
+| ![Home](screenshots/home.jpeg) | ![t1](screenshots/t1.jpeg) |
+| ![t2](screenshots/t2.jpeg)     | ![t3](screenshots/t3.jpeg) |
+| ![t4](screenshots/t4.jpeg)     | ![t5](screenshots/t5.jpeg) |
 
 ### Task 2 — Camera
-| Camera Preview | Pending Uploads |
-|----------------|----------------|
-| ![Camera Preview](screenshots/camera_preview.jpeg) | ![Pending Uploads](screenshots/pending_uploads.jpeg) |
+| | |
+|---|---|
+| ![camera_preview](screenshots/camera_preview.jpeg) | ![pending_uploads](screenshots/pending_uploads.jpeg) |
 
 ### Task 3 — UI Showcase
-| Feature Cards | Activity Timeline |
-|---------------|-----------------|
-| ![Feature Cards](screenshots/ui_card.jpeg) | ![Activity Timeline](screenshots/ui_timeline.jpeg) |
+| | |
+|---|---|
+| ![ui_card](screenshots/ui_card.jpeg) | ![ui_timeline](screenshots/ui_timeline.jpeg) |
 > Replace the placeholders above with screenshots after running on a device.
 > Recommended tool: `adb shell screencap -p /sdcard/screen.png && adb pull /sdcard/screen.png`
