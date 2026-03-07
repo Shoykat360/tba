@@ -30,12 +30,6 @@ class HomeScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 6),
-              Text(
-                'Senior Flutter Developer — Technical Tasks',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
               const SizedBox(height: 40),
               Expanded(
                 child: Column(
