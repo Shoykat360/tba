@@ -16,15 +16,16 @@ class CameraPreviewScreen extends StatefulWidget {
   const CameraPreviewScreen({super.key});
 
   @override
-  State<CameraPreviewScreen> createState() => _CameraPreviewScreenState();
+  State<CameraPreviewScreen> createState() =>
+      _CameraPreviewScreenState();
 }
 
 class _CameraPreviewScreenState extends State<CameraPreviewScreen>
     with WidgetsBindingObserver {
-  // Pinch-to-zoom tracking
-  double _baseZoom = 1.0;
-  double _currentZoom = 1.0;
-  bool _showPendingPanel = false;
+  // Pinch-to-zoom: track the zoom level at the moment the pinch starts
+  double _zoomAtPinchStart = 1.0;
+  double _currentDisplayZoom = 1.0;
+  bool _showPendingUploadsPanel = false;
 
   @override
   void initState() {
@@ -43,6 +44,7 @@ class _CameraPreviewScreenState extends State<CameraPreviewScreen>
     super.dispose();
   }
 
+  /// Re-initialize when app comes back to foreground; dispose when going away.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
@@ -52,15 +54,17 @@ class _CameraPreviewScreenState extends State<CameraPreviewScreen>
     }
   }
 
-  void _handleTapToFocus(TapDownDetails details, BoxConstraints constraints) {
+  void _handleTapToFocus(
+      TapDownDetails details, BoxConstraints constraints) {
+    // Normalize tap position to 0.0–1.0 range for camera API
     final normalizedX =
-    (details.localPosition.dx / constraints.maxWidth).clamp(0.0, 1.0);
+        (details.localPosition.dx / constraints.maxWidth).clamp(0.0, 1.0);
     final normalizedY =
-    (details.localPosition.dy / constraints.maxHeight).clamp(0.0, 1.0);
+        (details.localPosition.dy / constraints.maxHeight).clamp(0.0, 1.0);
 
-    context
-        .read<CameraBloc>()
-        .add(SetFocusPointEvent(Offset(normalizedX, normalizedY)));
+    context.read<CameraBloc>().add(
+          SetFocusPointEvent(Offset(normalizedX, normalizedY)),
+        );
   }
 
   @override
@@ -73,7 +77,8 @@ class _CameraPreviewScreenState extends State<CameraPreviewScreen>
             BlocConsumer<CameraBloc, CameraState>(
               listener: (context, state) {
                 if (state is CameraReady) {
-                  _currentZoom = state.configuration.currentZoom;
+                  _currentDisplayZoom = state.configuration.currentZoom;
+                  // Refresh queue count in top bar whenever camera is ready
                   context
                       .read<SyncBloc>()
                       .add(const LoadPendingUploadsEvent());
@@ -81,47 +86,19 @@ class _CameraPreviewScreenState extends State<CameraPreviewScreen>
               },
               builder: (context, state) {
                 if (state is CameraLoading || state is CameraInitial) {
-                  return const Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        CircularProgressIndicator(color: Colors.white),
-                        SizedBox(height: 16),
-                        Text('Initializing camera…',
-                            style: TextStyle(color: Colors.white54)),
-                      ],
-                    ),
-                  );
+                  return const _CameraLoadingView();
                 }
 
                 if (state is CameraError) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.camera_alt_outlined,
-                              color: Colors.red, size: 64),
-                          const SizedBox(height: 16),
-                          Text(state.message,
-                              textAlign: TextAlign.center,
-                              style:
-                              const TextStyle(color: Colors.white70)),
-                          const SizedBox(height: 24),
-                          ElevatedButton.icon(
-                            onPressed: () => context
-                                .read<CameraBloc>()
-                                .add(const InitializeCameraEvent()),
-                            icon: const Icon(Icons.refresh),
-                            label: const Text('Retry'),
-                          ),
-                        ],
-                      ),
-                    ),
+                  return _CameraErrorView(
+                    message: state.message,
+                    onRetry: () => context
+                        .read<CameraBloc>()
+                        .add(const InitializeCameraEvent()),
                   );
                 }
 
+                // Both CameraReady and CameraCapturing expose controller + config
                 final controller = state is CameraReady
                     ? state.controller
                     : (state as CameraCapturing).controller;
@@ -129,32 +106,33 @@ class _CameraPreviewScreenState extends State<CameraPreviewScreen>
                     ? state.configuration
                     : (state as CameraCapturing).configuration;
                 final focusPoint =
-                state is CameraReady ? state.focusPoint : null;
-                final showFocus =
-                state is CameraReady ? state.showFocusIndicator : false;
-                final isCapturing = state is CameraCapturing;
+                    state is CameraReady ? state.focusPoint : null;
+                final showFocusIndicator =
+                    state is CameraReady ? state.showFocusIndicator : false;
+                final isCurrentlyCapturing = state is CameraCapturing;
 
                 return LayoutBuilder(
                   builder: (context, constraints) {
                     return Stack(
                       fit: StackFit.expand,
                       children: [
-                        // ── Camera preview with gestures ──────────────
+                        // ── Camera preview with gesture support ───────
                         GestureDetector(
                           onTapDown: (details) =>
                               _handleTapToFocus(details, constraints),
-                          // Pinch-to-zoom: track base zoom on scale start
                           onScaleStart: (details) {
-                            _baseZoom = config.currentZoom;
+                            // Record zoom level at pinch start so scale is relative
+                            _zoomAtPinchStart = config.currentZoom;
                           },
-                          // Pinch-to-zoom: calculate new zoom smoothly
                           onScaleUpdate: (details) {
                             if (details.pointerCount < 2) return;
-                            final newZoom = (_baseZoom * details.scale)
-                                .clamp(config.minZoom, config.maxZoom);
-                            // Only dispatch if zoom changed meaningfully
-                            if ((newZoom - _currentZoom).abs() > 0.01) {
-                              _currentZoom = newZoom;
+                            final newZoom =
+                                (_zoomAtPinchStart * details.scale)
+                                    .clamp(config.minZoom, config.maxZoom);
+                            // Only dispatch if the change is meaningful (> 1%)
+                            if ((newZoom - _currentDisplayZoom).abs() >
+                                0.01) {
+                              _currentDisplayZoom = newZoom;
                               context
                                   .read<CameraBloc>()
                                   .add(SetZoomLevelEvent(newZoom));
@@ -176,8 +154,8 @@ class _CameraPreviewScreenState extends State<CameraPreviewScreen>
                           ),
                         ),
 
-                        // ── Focus indicator ───────────────────────────
-                        if (showFocus && focusPoint != null)
+                        // ── Tap-to-focus indicator ────────────────────
+                        if (showFocusIndicator && focusPoint != null)
                           FocusIndicatorWidget(
                             position: Offset(
                               focusPoint.dx * constraints.maxWidth,
@@ -185,19 +163,21 @@ class _CameraPreviewScreenState extends State<CameraPreviewScreen>
                             ),
                           ),
 
-                        // ── Top bar ───────────────────────────────────
+                        // ── Top status bar ────────────────────────────
                         Positioned(
                           top: 0,
                           left: 0,
                           right: 0,
-                          child: _TopBar(
-                            onTogglePanel: () => setState(
-                                    () => _showPendingPanel = !_showPendingPanel),
-                            showPendingPanel: _showPendingPanel,
+                          child: _TopStatusBar(
+                            onTogglePendingPanel: () => setState(() {
+                              _showPendingUploadsPanel =
+                                  !_showPendingUploadsPanel;
+                            }),
+                            isPendingPanelOpen: _showPendingUploadsPanel,
                           ),
                         ),
 
-                        // ── Bottom controls ───────────────────────────
+                        // ── Bottom camera controls ────────────────────
                         Positioned(
                           bottom: 0,
                           left: 0,
@@ -207,13 +187,13 @@ class _CameraPreviewScreenState extends State<CameraPreviewScreen>
                             maxZoom: config.maxZoom,
                             currentZoom: config.currentZoom,
                             zoomPresets: config.availableZoomPresets,
-                            isCapturing: isCapturing,
+                            isCapturing: isCurrentlyCapturing,
                             onCapture: () => context
                                 .read<CameraBloc>()
                                 .add(const CaptureImageEvent()),
-                            onZoomChanged: (z) => context
+                            onZoomChanged: (zoom) => context
                                 .read<CameraBloc>()
-                                .add(SetZoomLevelEvent(z)),
+                                .add(SetZoomLevelEvent(zoom)),
                           ),
                         ),
                       ],
@@ -223,15 +203,15 @@ class _CameraPreviewScreenState extends State<CameraPreviewScreen>
               },
             ),
 
-            // ── Pending uploads panel ─────────────────────────────────
-            if (_showPendingPanel)
+            // ── Pending uploads slide-up panel ────────────────────────
+            if (_showPendingUploadsPanel)
               Positioned(
                 bottom: 0,
                 left: 0,
                 right: 0,
                 child: _PendingUploadsPanel(
-                  onClose: () =>
-                      setState(() => _showPendingPanel = false),
+                  onClose: () => setState(
+                      () => _showPendingUploadsPanel = false),
                 ),
               ),
           ],
@@ -241,48 +221,105 @@ class _CameraPreviewScreenState extends State<CameraPreviewScreen>
   }
 }
 
-// ── Top bar ───────────────────────────────────────────────────────────────
-class _TopBar extends StatelessWidget {
-  final VoidCallback onTogglePanel;
-  final bool showPendingPanel;
+// ── Loading view ───────────────────────────────────────────────────────────
+class _CameraLoadingView extends StatelessWidget {
+  const _CameraLoadingView();
 
-  const _TopBar({
-    required this.onTogglePanel,
-    required this.showPendingPanel,
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircularProgressIndicator(color: Colors.white),
+          SizedBox(height: 16),
+          Text('Initialising camera…',
+              style: TextStyle(color: Colors.white54)),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Error view ─────────────────────────────────────────────────────────────
+class _CameraErrorView extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+
+  const _CameraErrorView({required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.camera_alt_outlined,
+                color: Colors.red, size: 64),
+            const SizedBox(height: 16),
+            Text(message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white70)),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Top status bar ─────────────────────────────────────────────────────────
+class _TopStatusBar extends StatelessWidget {
+  final VoidCallback onTogglePendingPanel;
+  final bool isPendingPanelOpen;
+
+  const _TopStatusBar({
+    required this.onTogglePendingPanel,
+    required this.isPendingPanelOpen,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding:
+          const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Colors.black.withOpacity(0.7), Colors.transparent],
+          colors: [
+            Colors.black.withOpacity(0.7),
+            Colors.transparent,
+          ],
         ),
       ),
       child: Row(
         children: [
           IconButton(
-            icon:
-            const Icon(Icons.arrow_back_ios_new, color: Colors.white),
+            icon: const Icon(Icons.arrow_back_ios_new,
+                color: Colors.white),
             onPressed: () => Navigator.of(context).pop(),
           ),
           const Spacer(),
           BlocBuilder<SyncBloc, SyncState>(
-            builder: (context, state) {
-              final isUploading = state is SyncUploading;
-              final isConnected =
-              state is SyncIdle ? state.isConnected : true;
-              int pendingCount = 0;
-              if (state is SyncIdle) {
-                pendingCount =
-                    state.pendingCount + state.failedCount;
-              }
+            builder: (context, syncState) {
+              final isUploading = syncState is SyncUploading;
+              final isOnline = syncState is SyncIdle
+                  ? syncState.isConnected
+                  : true;
+              final queueCount = syncState is SyncIdle
+                  ? syncState.pendingCount + syncState.failedCount
+                  : 0;
 
               return GestureDetector(
-                onTap: onTogglePanel,
+                onTap: onTogglePendingPanel,
                 child: Container(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 12, vertical: 6),
@@ -300,7 +337,7 @@ class _TopBar extends StatelessWidget {
                         height: 8,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: isConnected
+                          color: isOnline
                               ? Colors.greenAccent
                               : Colors.redAccent,
                         ),
@@ -316,29 +353,24 @@ class _TopBar extends StatelessWidget {
                         )
                       else
                         Icon(
-                          pendingCount > 0
+                          queueCount > 0
                               ? Icons.cloud_upload_outlined
                               : Icons.cloud_done_outlined,
-                          color: pendingCount > 0
+                          color: queueCount > 0
                               ? Colors.orangeAccent
                               : Colors.greenAccent,
                           size: 16,
                         ),
                       const SizedBox(width: 6),
                       Text(
-                        isUploading
-                            ? 'Syncing…'
-                            : !isConnected
-                            ? 'Offline${pendingCount > 0 ? ' · $pendingCount queued' : ''}'
-                            : pendingCount > 0
-                            ? '$pendingCount pending'
-                            : 'Synced',
+                        _buildStatusLabel(
+                            isUploading, isOnline, queueCount),
                         style: const TextStyle(
                             color: Colors.white, fontSize: 12),
                       ),
                       const SizedBox(width: 4),
                       Icon(
-                        showPendingPanel
+                        isPendingPanelOpen
                             ? Icons.keyboard_arrow_down
                             : Icons.keyboard_arrow_up,
                         color: Colors.white54,
@@ -354,9 +386,20 @@ class _TopBar extends StatelessWidget {
       ),
     );
   }
+
+  String _buildStatusLabel(
+      bool isUploading, bool isOnline, int queueCount) {
+    if (isUploading) return 'Syncing…';
+    if (!isOnline) {
+      return queueCount > 0
+          ? 'Offline · $queueCount queued'
+          : 'Offline';
+    }
+    return queueCount > 0 ? '$queueCount pending' : 'Synced';
+  }
 }
 
-// ── Pending uploads panel ─────────────────────────────────────────────────
+// ── Pending uploads slide-up panel ─────────────────────────────────────────
 class _PendingUploadsPanel extends StatelessWidget {
   final VoidCallback onClose;
 
@@ -371,7 +414,7 @@ class _PendingUploadsPanel extends StatelessWidget {
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius:
-        const BorderRadius.vertical(top: Radius.circular(20)),
+            const BorderRadius.vertical(top: Radius.circular(20)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.3),
@@ -396,22 +439,19 @@ class _PendingUploadsPanel extends StatelessWidget {
           Flexible(
             child: SingleChildScrollView(
               child: BlocBuilder<SyncBloc, SyncState>(
-                builder: (context, state) {
-                  /*final batches =
-                  state is SyncIdle ? state.pendingBatches : [];*/
-                  // Change this line in _PendingUploadsPanel:
-                  final batches = state is SyncIdle
-                      ? state.pendingBatches
-                      : <ImageBatch>[];  // ← typed empty list
-                  final isConnected =
-                  state is SyncIdle ? state.isConnected : false;
-                  final isUploading = state is SyncUploading;
+                builder: (context, syncState) {
+                  final batches = syncState is SyncIdle
+                      ? syncState.pendingBatches
+                      : <ImageBatch>[];
+                  final isOnline =
+                      syncState is SyncIdle ? syncState.isConnected : false;
+                  final isUploading = syncState is SyncUploading;
 
                   return PendingUploadsList(
                     batches: batches,
-                    isConnected: isConnected,
+                    isConnected: isOnline,
                     isUploading: isUploading,
-                    onRetry: () => context
+                    onRetryTapped: () => context
                         .read<SyncBloc>()
                         .add(const TriggerUploadEvent()),
                   );

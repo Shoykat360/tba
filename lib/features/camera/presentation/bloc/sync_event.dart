@@ -2,6 +2,7 @@ import 'package:equatable/equatable.dart';
 
 abstract class SyncEvent extends Equatable {
   const SyncEvent();
+
   @override
   List<Object?> get props => [];
 }
@@ -18,9 +19,10 @@ class StartConnectivityMonitorEvent extends SyncEvent {
   const StartConnectivityMonitorEvent();
 }
 
-class ConnectivityChangedEvent extends SyncEvent {
+class ConnectivityStatusChangedEvent extends SyncEvent {
   final bool isConnected;
-  const ConnectivityChangedEvent(this.isConnected);
+  const ConnectivityStatusChangedEvent(this.isConnected);
+
   @override
   List<Object?> get props => [isConnected];
 }

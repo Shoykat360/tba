@@ -1,10 +1,11 @@
 import 'package:camera/camera.dart';
 import 'package:equatable/equatable.dart';
-import '../../domain/entities/camera_configuration.dart';
 import 'package:flutter/material.dart';
+import '../../domain/entities/camera_configuration.dart';
 
 abstract class CameraState extends Equatable {
   const CameraState();
+
   @override
   List<Object?> get props => [];
 }
@@ -45,7 +46,8 @@ class CameraReady extends CameraState {
   }
 
   @override
-  List<Object?> get props => [controller, configuration, focusPoint, showFocusIndicator];
+  List<Object?> get props =>
+      [controller, configuration, focusPoint, showFocusIndicator];
 }
 
 class CameraCapturing extends CameraState {
@@ -63,7 +65,9 @@ class CameraCapturing extends CameraState {
 
 class CameraError extends CameraState {
   final String message;
+
   const CameraError(this.message);
+
   @override
   List<Object?> get props => [message];
 }

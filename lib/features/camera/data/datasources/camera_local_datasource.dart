@@ -8,11 +8,15 @@ import '../models/captured_image_model.dart';
 
 abstract class CameraLocalDatasource {
   Future<List<CameraDescription>> getAvailableCameras();
+
   Future<CameraController> initializeCameraController(
       CameraDescription camera);
+
   Future<CapturedImageModel> captureAndSave(
       CameraController controller, String batchId);
+
   Future<double> getMinZoom(CameraController controller);
+
   Future<double> getMaxZoom(CameraController controller);
 }
 
@@ -53,55 +57,56 @@ class CameraLocalDatasourceImpl implements CameraLocalDatasource {
     try {
       final xFile = await controller.takePicture();
 
-      // Use app documents directory — no storage permissions needed
-      // This directory persists even when app is backgrounded/killed
+      // Store in app documents directory — no extra storage permissions needed
       final appDir = await getApplicationDocumentsDirectory();
       final imageDir = Directory('${appDir.path}/captured_images');
       if (!await imageDir.exists()) {
         await imageDir.create(recursive: true);
       }
 
-      // Unique filename with timestamp prevents collisions
       final imageId = uuid.v4();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final destPath = '${imageDir.path}/${timestamp}_$imageId.jpg';
+      final destinationPath =
+          '${imageDir.path}/${timestamp}_$imageId.jpg';
 
-      // Copy to permanent location — temp xFile path may be cleared by OS
-      await File(xFile.path).copy(destPath);
+      // Copy from temp camera path to permanent location
+      await File(xFile.path).copy(destinationPath);
 
-      // Verify file was written successfully before recording in DB
-      final savedFile = File(destPath);
+      final savedFile = File(destinationPath);
       if (!await savedFile.exists()) {
-        throw CameraHardwareException('Image file not saved correctly: $destPath');
+        throw CameraHardwareException(
+            'Image was not saved correctly at: $destinationPath');
       }
 
-      final fileSize = await savedFile.length();
-      debugPrint('[CameraDS] 📸 Saved: ${imageId.substring(0, 8)}… | size=${fileSize}b | path=$destPath');
+      final fileSizeBytes = await savedFile.length();
+      debugPrint(
+          '[CameraDS] 📸 Saved image ${imageId.substring(0, 8)} | '
+          'size=${fileSizeBytes}b');
 
-      // Clean up temp camera file
+      // Clean up temp file created by camera plugin
       try {
         await File(xFile.path).delete();
       } catch (_) {}
 
       return CapturedImageModel(
         id: imageId,
-        localPath: destPath,
+        localPath: destinationPath,
         capturedAt: DateTime.now(),
         batchId: batchId,
       );
     } catch (e) {
-      debugPrint('[CameraDS] ❌ captureAndSave failed: $e');
+      debugPrint('[CameraDS] ❌ captureAndSave error: $e');
       throw CameraHardwareException('Failed to capture image: $e');
     }
   }
 
   @override
   Future<double> getMinZoom(CameraController controller) async {
-    return await controller.getMinZoomLevel();
+    return controller.getMinZoomLevel();
   }
 
   @override
   Future<double> getMaxZoom(CameraController controller) async {
-    return await controller.getMaxZoomLevel();
+    return controller.getMaxZoomLevel();
   }
 }

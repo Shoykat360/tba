@@ -35,4 +35,5 @@ class ImageBatch {
   bool get isPending => uploadStatus == UploadStatus.pending;
   bool get isFailed => uploadStatus == UploadStatus.failed;
   bool get isUploaded => uploadStatus == UploadStatus.uploaded;
+  bool get isUploading => uploadStatus == UploadStatus.uploading;
 }

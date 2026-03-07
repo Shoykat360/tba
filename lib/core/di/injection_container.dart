@@ -26,21 +26,14 @@ import '../../features/camera/data/repositories/camera_repository_impl.dart';
 import '../../features/camera/data/repositories/image_sync_repository_impl.dart';
 import '../../features/camera/domain/repositories/camera_repository.dart';
 import '../../features/camera/domain/repositories/image_sync_repository.dart';
-import '../../features/camera/domain/usecases/add_image_to_upload_queue.dart';
-import '../../features/camera/domain/usecases/attempt_upload_for_pending_images.dart';
-import '../../features/camera/domain/usecases/capture_image_and_store_locally.dart';
-import '../../features/camera/domain/usecases/initialize_camera.dart';
-import '../../features/camera/domain/usecases/retrieve_pending_upload_queue.dart';
-import '../../features/camera/domain/usecases/retry_failed_uploads_when_connection_restored.dart';
-import '../../features/camera/domain/usecases/set_camera_zoom_level.dart';
-import '../../features/camera/domain/usecases/set_manual_focus_point.dart';
+import '../../features/camera/domain/usecases/camera_usecases.dart';
 import '../../features/camera/presentation/bloc/camera_bloc.dart';
 import '../../features/camera/presentation/bloc/sync_bloc.dart';
 
 final sl = GetIt.instance;
 
-Future<void> initDependencies() async {
-  // ── External ─────────────────────────────────────────────────────────────
+Future<void> initialiseDependencies() async {
+  // ── External ──────────────────────────────────────────────────────────────
   final sharedPreferences = await SharedPreferences.getInstance();
   sl.registerLazySingleton<SharedPreferences>(() => sharedPreferences);
   sl.registerLazySingleton<Uuid>(() => const Uuid());
@@ -89,8 +82,7 @@ Future<void> initDependencies() async {
 
   // ── Camera Feature ────────────────────────────────────────────────────────
 
-  // Ensure Hive box is open before registering datasource
-  // Box may have been closed if app was backgrounded
+  // Reopen Hive box if it was closed (can happen after backgrounding)
   if (!Hive.isBoxOpen(kImageBatchBoxName)) {
     await Hive.openBox<Map>(kImageBatchBoxName);
     debugPrint('[DI] ✅ Hive box reopened during DI init');
@@ -108,16 +100,10 @@ Future<void> initDependencies() async {
 
   // Repositories
   sl.registerLazySingleton<CameraRepository>(
-        () => CameraRepositoryImpl(
-      localDatasource: sl(),
-      uuid: sl(),
-    ),
+        () => CameraRepositoryImpl(localDatasource: sl(), uuid: sl()),
   );
   sl.registerLazySingleton<ImageSyncRepository>(
-        () => ImageSyncRepositoryImpl(
-      localDatasource: sl(),
-      uuid: sl(),
-    ),
+        () => ImageSyncRepositoryImpl(localDatasource: sl(), uuid: sl()),
   );
 
   // Use Cases
@@ -133,18 +119,18 @@ Future<void> initDependencies() async {
   // BLoCs
   sl.registerFactory<CameraBloc>(
         () => CameraBloc(
-      initializeCamera: sl(),
-      captureImage: sl(),
-      setZoomLevel: sl(),
-      setFocusPoint: sl(),
-      addToQueue: sl(),
+      initializeCameraUseCase: sl(),
+      captureImageUseCase: sl(),
+      setZoomLevelUseCase: sl(),
+      setFocusPointUseCase: sl(),
+      addImageToQueueUseCase: sl(),
       cameraRepository: sl(),
     ),
   );
   sl.registerFactory<SyncBloc>(
         () => SyncBloc(
-      retrievePending: sl(),
-      attemptUpload: sl(),
+      retrievePendingQueueUseCase: sl(),
+      attemptUploadUseCase: sl(),
       connectivity: sl(),
     ),
   );

@@ -4,100 +4,114 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:uuid/uuid.dart';
 import 'package:workmanager/workmanager.dart';
 import '../../../../../core/usecases/usecase.dart';
-import '../../domain/usecases/attempt_upload_for_pending_images.dart';
+import '../../domain/usecases/camera_usecases.dart';
 import '../datasources/image_queue_local_datasource.dart';
 import '../repositories/image_sync_repository_impl.dart';
 
-const kSyncTaskName = 'image_sync_task';
-const kSyncTaskUniqueName = 'image_sync_unique';
-const kSyncTaskImmediateName = 'image_sync_immediate';
+// Task name constants — must match what is registered in main()
+const kBackgroundSyncTaskName = 'image_sync_task';
+const kBackgroundSyncUniqueTagPeriodic = 'image_sync_periodic';
+const kBackgroundSyncUniqueTagImmediate = 'image_sync_immediate';
 
-/// MUST be top-level function with @pragma for release mode
+/// IMPORTANT: This function MUST be a top-level function (not inside a class).
+/// The @pragma annotation is required for release/AOT builds so the Dart
+/// compiler does not tree-shake this entry point away.
+///
+/// WorkManager runs this in a completely separate isolate from the main app,
+/// so no Flutter widgets or singletons are available — we re-initialise
+/// everything from scratch here.
 @pragma('vm:entry-point')
-void callbackDispatcher() {
+void backgroundWorkerEntryPoint() {
   Workmanager().executeTask((taskName, inputData) async {
-    debugPrint('[WorkManager] 🔧 Task: $taskName');
+    debugPrint('[BGWorker] 🔧 Task received: $taskName');
 
-    if (taskName != kSyncTaskName) {
-      debugPrint('[WorkManager] ⚠️ Unknown task: $taskName');
-      return true;
+    if (taskName != kBackgroundSyncTaskName) {
+      debugPrint('[BGWorker] ⚠️ Unknown task "$taskName" — skipping');
+      return true; // Return true so WorkManager does not retry immediately
     }
 
     try {
-      // Always check real internet first
-      final hasInternet = await _hasRealInternet();
+      // Step 1 — verify we actually have internet before doing any work
+      final hasInternet = await checkForRealInternet();
       if (!hasInternet) {
-        debugPrint('[WorkManager] 📵 No internet — will retry later');
-        return true; // true = success, WorkManager reschedules periodic
+        debugPrint('[BGWorker] 📵 No internet — will retry on next schedule');
+        return true; // true = success; WorkManager keeps the periodic schedule
       }
 
-      // Initialize Hive in this background isolate
-      // Background isolates are completely separate from main isolate
-      await _initHiveForBackground();
+      // Step 2 — boot Hive in this isolate (each isolate is independent)
+      await openHiveInBackgroundIsolate();
 
       final box = Hive.box<Map>(kImageBatchBoxName);
 
-      // Check if there's anything to upload before doing work
-      final pendingCount = box.values
-          .where((v) {
-        final map = Map<String, dynamic>.from(v);
+      // Step 3 — count batches that still need uploading
+      final pendingBatchCount = box.values.where((rawMap) {
+        final map = Map<String, dynamic>.from(rawMap);
         final statusIndex = map['uploadStatusIndex'] as int;
         // 0 = pending, 3 = failed
         return statusIndex == 0 || statusIndex == 3;
-      })
-          .length;
+      }).length;
 
-      if (pendingCount == 0) {
-        debugPrint('[WorkManager] ✅ Nothing pending — task complete');
+      if (pendingBatchCount == 0) {
+        debugPrint('[BGWorker] ✅ Nothing pending — task done');
         return true;
       }
 
-      debugPrint('[WorkManager] 📦 Found $pendingCount pending batches — uploading');
+      debugPrint(
+          '[BGWorker] 📦 $pendingBatchCount batch(es) pending — starting upload');
 
+      // Step 4 — wire up the repository chain manually (no DI available here)
       final datasource = ImageQueueLocalDatasourceImpl(box: box);
-      final repo = ImageSyncRepositoryImpl(
+      final syncRepository = ImageSyncRepositoryImpl(
         localDatasource: datasource,
         uuid: const Uuid(),
       );
-      final usecase = AttemptUploadForPendingImages(repo);
-      final result = await usecase(NoParams());
+      final attemptUploadUseCase =
+          AttemptUploadForPendingImages(syncRepository);
+
+      final result = await attemptUploadUseCase(NoParams());
 
       result.fold(
-            (failure) {
-          debugPrint('[WorkManager] ❌ Sync failed: ${failure.message}');
-        },
-            (_) {
-          debugPrint('[WorkManager] ✅ Background sync completed successfully');
-        },
+        (failure) =>
+            debugPrint('[BGWorker] ❌ Upload failed: ${failure.message}'),
+        (_) => debugPrint('[BGWorker] ✅ Background upload finished'),
       );
 
       return true;
-    } catch (e, stack) {
-      debugPrint('[WorkManager] ❌ Exception: $e');
-      debugPrint('[WorkManager] Stack: $stack');
-      return false; // false = failure, WorkManager retries with backoff
+    } catch (error, stackTrace) {
+      debugPrint('[BGWorker] ❌ Exception: $error');
+      debugPrint('[BGWorker] Stack: $stackTrace');
+      // Return false so WorkManager retries with exponential back-off
+      return false;
     } finally {
-      // Always close Hive after background task to free resources
-      try {
-        if (Hive.isBoxOpen(kImageBatchBoxName)) {
-          await Hive.box<Map>(kImageBatchBoxName).close();
-        }
-      } catch (_) {}
+      // Always close Hive after the task — frees file locks for the main app
+      await closeHiveAfterBackgroundTask();
     }
   });
 }
 
-/// Initialize Hive specifically for background isolate
-Future<void> _initHiveForBackground() async {
+/// Opens Hive in the background isolate.
+/// Must be called before accessing any Hive box in this isolate.
+Future<void> openHiveInBackgroundIsolate() async {
   await Hive.initFlutter();
   if (!Hive.isBoxOpen(kImageBatchBoxName)) {
     await Hive.openBox<Map>(kImageBatchBoxName);
-    debugPrint('[WorkManager] ✅ Hive box opened in background isolate');
+    debugPrint('[BGWorker] ✅ Hive box opened in background isolate');
   }
 }
 
-/// Real internet check via DNS lookup
-Future<bool> _hasRealInternet() async {
+/// Closes the Hive box after the background task completes.
+Future<void> closeHiveAfterBackgroundTask() async {
+  try {
+    if (Hive.isBoxOpen(kImageBatchBoxName)) {
+      await Hive.box<Map>(kImageBatchBoxName).close();
+      debugPrint('[BGWorker] 🔒 Hive box closed');
+    }
+  } catch (_) {}
+}
+
+/// Checks for real internet connectivity via DNS lookup.
+/// Returns false for situations like "WiFi connected but no internet".
+Future<bool> checkForRealInternet() async {
   try {
     final result = await InternetAddress.lookup('google.com')
         .timeout(const Duration(seconds: 5));
@@ -107,21 +121,27 @@ Future<bool> _hasRealInternet() async {
   }
 }
 
-class BackgroundUploadWorker {
-  /// Call once in main() before runApp
-  static Future<void> initialize() async {
+/// Manages WorkManager task registration.
+/// Call [BackgroundSyncScheduler.initialise] once in main() before runApp().
+class BackgroundSyncScheduler {
+  BackgroundSyncScheduler._(); // prevent instantiation
+
+  /// Initialise WorkManager. Call once in main() before runApp().
+  static Future<void> initialise() async {
     await Workmanager().initialize(
-      callbackDispatcher,
+      backgroundWorkerEntryPoint,
       isInDebugMode: kDebugMode,
     );
-    debugPrint('[WorkManager] ✅ Initialized (debug=$kDebugMode)');
+    debugPrint(
+        '[BGScheduler] ✅ WorkManager initialised (debug=$kDebugMode)');
   }
 
-  /// Periodic task — fires every 15 min (Android minimum)
-  static Future<void> schedulePeriodicSync() async {
+  /// Schedule a periodic task that fires every 15 minutes (Android minimum).
+  /// Uses [ExistingWorkPolicy.keep] so re-registrations do not reset the timer.
+  static Future<void> schedulePeriodicUploadCheck() async {
     await Workmanager().registerPeriodicTask(
-      kSyncTaskUniqueName,
-      kSyncTaskName,
+      kBackgroundSyncUniqueTagPeriodic,
+      kBackgroundSyncTaskName,
       frequency: const Duration(minutes: 15),
       constraints: Constraints(
         networkType: NetworkType.connected,
@@ -134,31 +154,34 @@ class BackgroundUploadWorker {
       backoffPolicy: BackoffPolicy.exponential,
       backoffPolicyDelay: const Duration(minutes: 1),
     );
-    debugPrint('[WorkManager] ✅ Periodic sync scheduled (every 15min)');
+    debugPrint('[BGScheduler] ✅ Periodic upload check scheduled (15 min)');
   }
 
-  /// One-off immediate task — fires as soon as network available
-  /// Use this when app resumes or connectivity restores
-  static Future<void> triggerImmediateSync() async {
+  /// Trigger an immediate one-off upload attempt — use this when the app
+  /// detects connectivity is restored or when it comes back to the foreground.
+  ///
+  /// A timestamp suffix ensures the unique name is always fresh so Android
+  /// does not deduplicate it with a previous immediate task.
+  static Future<void> triggerImmediateUploadNow() async {
     try {
+      final uniqueTag =
+          '${kBackgroundSyncUniqueTagImmediate}_${DateTime.now().millisecondsSinceEpoch}';
       await Workmanager().registerOneOffTask(
-        // Unique name with timestamp prevents duplicate tasks
-        '${kSyncTaskImmediateName}_${DateTime.now().millisecondsSinceEpoch}',
-        kSyncTaskName,
-        constraints: Constraints(
-          networkType: NetworkType.connected,
-        ),
+        uniqueTag,
+        kBackgroundSyncTaskName,
+        constraints: Constraints(networkType: NetworkType.connected),
         backoffPolicy: BackoffPolicy.exponential,
         backoffPolicyDelay: const Duration(seconds: 30),
       );
-      debugPrint('[WorkManager] 🚀 One-off sync task registered');
+      debugPrint('[BGScheduler] 🚀 Immediate upload task queued');
     } catch (e) {
-      debugPrint('[WorkManager] ❌ Failed to register one-off task: $e');
+      debugPrint('[BGScheduler] ❌ Could not queue immediate task: $e');
     }
   }
 
-  static Future<void> cancelAll() async {
+  /// Cancel all pending WorkManager tasks (e.g. on logout).
+  static Future<void> cancelAllScheduledTasks() async {
     await Workmanager().cancelAll();
-    debugPrint('[WorkManager] 🗑️ All tasks cancelled');
+    debugPrint('[BGScheduler] 🗑️ All scheduled tasks cancelled');
   }
 }

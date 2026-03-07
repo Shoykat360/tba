@@ -1,13 +1,11 @@
 class LocationPermissionException implements Exception {
   final String message;
-  const LocationPermissionException(
-      [this.message = 'Location permission denied.']);
+  const LocationPermissionException([this.message = 'Location permission denied.']);
 }
 
 class LocationServiceDisabledException implements Exception {
   final String message;
-  const LocationServiceDisabledException(
-      [this.message = 'Location services are disabled.']);
+  const LocationServiceDisabledException([this.message = 'Location services are disabled.']);
 }
 
 class LocationFetchException implements Exception {
@@ -17,8 +15,7 @@ class LocationFetchException implements Exception {
 
 class LocalStorageException implements Exception {
   final String message;
-  const LocalStorageException(
-      [this.message = 'Local storage operation failed.']);
+  const LocalStorageException([this.message = 'Local storage operation failed.']);
 }
 
 class ServerException implements Exception {

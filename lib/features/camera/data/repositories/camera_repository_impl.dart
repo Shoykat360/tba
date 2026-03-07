@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:dartz/dartz.dart';
+import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../../../../core/error/failures.dart';
 import '../../domain/entities/camera_configuration.dart';
@@ -22,17 +22,21 @@ class CameraRepositoryImpl implements CameraRepository {
     try {
       final cameras = await localDatasource.getAvailableCameras();
       if (cameras.isEmpty) {
-        return Left(CameraFailure('No cameras available on this device'));
+        return const Left(CameraFailure('No cameras available on this device'));
       }
-      final backCamera = cameras.firstWhere(
-            (c) => c.lensDirection == CameraLensDirection.back,
+
+      // Prefer back camera; fall back to whatever is available
+      final selectedCamera = cameras.firstWhere(
+        (c) => c.lensDirection == CameraLensDirection.back,
         orElse: () => cameras.first,
       );
+
       final controller =
-      await localDatasource.initializeCameraController(backCamera);
+          await localDatasource.initializeCameraController(selectedCamera);
       return Right(controller);
     } on CameraException catch (e) {
-      return Left(CameraFailure(e.description ?? 'Camera initialization failed'));
+      return Left(
+          CameraFailure(e.description ?? 'Camera initialization failed'));
     } catch (e) {
       return Left(CameraFailure('Unexpected camera error: $e'));
     }
@@ -42,15 +46,15 @@ class CameraRepositoryImpl implements CameraRepository {
   Future<Either<Failure, CapturedImage>> captureImageAndStoreLocally(
       CameraController controller) async {
     try {
-      // Each captured image gets its own unique batchId
-      // This fixes "all images show same batch name" in the pending list
+      // Each capture gets its own batchId so pending list shows distinct entries
       final batchId = uuid.v4();
-      final model = await localDatasource.captureAndSave(controller, batchId);
+      final model =
+          await localDatasource.captureAndSave(controller, batchId);
       return Right(model.toEntity());
     } on CameraException catch (e) {
       return Left(CameraFailure(e.description ?? 'Capture failed'));
     } catch (e) {
-      return Left(CameraFailure('Capture unexpected error: $e'));
+      return Left(CameraFailure('Capture error: $e'));
     }
   }
 
@@ -61,6 +65,7 @@ class CameraRepositoryImpl implements CameraRepository {
       final minZoom = await localDatasource.getMinZoom(controller);
       final maxZoom = await localDatasource.getMaxZoom(controller);
 
+      // Build preset list based on what the device supports
       final presets = <double>[];
       if (minZoom <= 0.5 && maxZoom >= 0.5) presets.add(0.5);
       if (maxZoom >= 1.0) presets.add(1.0);
@@ -76,7 +81,7 @@ class CameraRepositoryImpl implements CameraRepository {
         isFocusSupported: true,
       ));
     } catch (e) {
-      return Left(CameraFailure('Failed to get camera config: $e'));
+      return Left(CameraFailure('Failed to read camera configuration: $e'));
     }
   }
 
@@ -89,7 +94,7 @@ class CameraRepositoryImpl implements CameraRepository {
     } on CameraException catch (e) {
       return Left(CameraFailure(e.description ?? 'Failed to set zoom'));
     } catch (e) {
-      return Left(CameraFailure('Failed to set zoom: $e'));
+      return Left(CameraFailure('Zoom error: $e'));
     }
   }
 
@@ -103,7 +108,7 @@ class CameraRepositoryImpl implements CameraRepository {
     } on CameraException catch (e) {
       return Left(CameraFailure(e.description ?? 'Failed to set focus'));
     } catch (e) {
-      return Left(CameraFailure('Failed to set focus: $e'));
+      return Left(CameraFailure('Focus error: $e'));
     }
   }
 
@@ -114,9 +119,10 @@ class CameraRepositoryImpl implements CameraRepository {
       await controller.dispose();
       return const Right(null);
     } on CameraException catch (e) {
-      return Left(CameraFailure(e.description ?? 'Failed to dispose camera'));
+      return Left(
+          CameraFailure(e.description ?? 'Failed to dispose camera'));
     } catch (e) {
-      return Left(CameraFailure('Failed to dispose: $e'));
+      return Left(CameraFailure('Dispose error: $e'));
     }
   }
 }

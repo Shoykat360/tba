@@ -3,6 +3,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../../../../core/error/exceptions.dart';
 import '../models/image_batch_model.dart';
 
+// Box name is shared with background worker — keep in sync
 const kImageBatchBoxName = 'image_batches';
 
 abstract class ImageQueueLocalDatasource {
@@ -17,11 +18,11 @@ class ImageQueueLocalDatasourceImpl implements ImageQueueLocalDatasource {
 
   ImageQueueLocalDatasourceImpl({required Box<Map> box}) : _box = box;
 
-  /// Ensures box is open before any operation
-  /// Critical when app resumes from background
+  /// Throws if the box was closed (e.g. app backgrounded then Hive shut down)
   Box<Map> get _safeBox {
     if (!_box.isOpen) {
-      throw CacheException('Hive box is closed. App may have been backgrounded.');
+      throw CacheException(
+          'Hive box is closed — app may have been backgrounded.');
     }
     return _box;
   }
@@ -36,11 +37,11 @@ class ImageQueueLocalDatasourceImpl implements ImageQueueLocalDatasource {
         'createdAt': batch.createdAt.toIso8601String(),
         'retryCount': batch.retryCount,
       });
-      // Flush to disk immediately — prevents data loss if app is killed
+      // Flush to disk immediately so data survives app kill
       await _safeBox.flush();
-      debugPrint('[HiveDS] 💾 Saved & flushed batch: ${batch.id.substring(0, 8)}…');
+      debugPrint('[HiveDS] 💾 Saved batch ${batch.id.substring(0, 8)}');
     } catch (e) {
-      debugPrint('[HiveDS] ❌ saveBatch failed: $e');
+      debugPrint('[HiveDS] ❌ saveBatch error: $e');
       throw CacheException('Failed to save batch: $e');
     }
   }
@@ -62,14 +63,15 @@ class ImageQueueLocalDatasourceImpl implements ImageQueueLocalDatasource {
         );
       }).toList();
     } catch (e) {
-      debugPrint('[HiveDS] ❌ getAllBatches failed: $e');
+      debugPrint('[HiveDS] ❌ getAllBatches error: $e');
       throw CacheException('Failed to load batches: $e');
     }
   }
 
   @override
   Future<void> updateBatch(ImageBatchModel batch) async {
-    await saveBatch(batch); // saveBatch already flushes
+    // saveBatch already overwrites by key and flushes
+    await saveBatch(batch);
   }
 
   @override
@@ -77,9 +79,9 @@ class ImageQueueLocalDatasourceImpl implements ImageQueueLocalDatasource {
     try {
       await _safeBox.delete(batchId);
       await _safeBox.flush();
-      debugPrint('[HiveDS] 🗑️ Deleted & flushed batch: ${batchId.substring(0, 8)}…');
+      debugPrint('[HiveDS] 🗑️ Deleted batch ${batchId.substring(0, 8)}');
     } catch (e) {
-      debugPrint('[HiveDS] ❌ deleteBatch failed: $e');
+      debugPrint('[HiveDS] ❌ deleteBatch error: $e');
       throw CacheException('Failed to delete batch: $e');
     }
   }

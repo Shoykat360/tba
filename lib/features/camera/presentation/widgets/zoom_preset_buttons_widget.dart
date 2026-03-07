@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
 
+/// Row of circular zoom preset buttons (e.g. .5x, 1x, 2x, 3x).
 class ZoomPresetButtonsWidget extends StatelessWidget {
   final List<double> presets;
   final double currentZoom;
-  final ValueChanged<double> onPresetTap;
+  final ValueChanged<double> onPresetTapped;
 
   const ZoomPresetButtonsWidget({
     super.key,
     required this.presets,
     required this.currentZoom,
-    required this.onPresetTap,
+    required this.onPresetTapped,
   });
 
   @override
@@ -17,30 +18,34 @@ class ZoomPresetButtonsWidget extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: presets.map((preset) {
-        final isSelected = (currentZoom - preset).abs() < 0.05;
+        final isActive = (currentZoom - preset).abs() < 0.05;
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4),
           child: GestureDetector(
-            onTap: () => onPresetTap(preset),
+            onTap: () => onPresetTapped(preset),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
-              width: 48,
-              height: 48,
+              width: 50,
+              height: 50,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: isSelected
+                color: isActive
                     ? Colors.yellowAccent
-                    : Colors.black.withOpacity(0.5),
+                    : Colors.black.withOpacity(0.55),
                 border: Border.all(
-                  color: isSelected ? Colors.yellowAccent : Colors.white54,
+                  color: isActive
+                      ? Colors.yellowAccent
+                      : Colors.white54,
                   width: 1.5,
                 ),
               ),
               child: Center(
                 child: Text(
-                  preset == 0.5 ? '.5x' : '${preset.toStringAsFixed(0)}x',
+                  preset == 0.5
+                      ? '.5x'
+                      : '${preset.toStringAsFixed(0)}x',
                   style: TextStyle(
-                    color: isSelected ? Colors.black : Colors.white,
+                    color: isActive ? Colors.black : Colors.white,
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
                   ),

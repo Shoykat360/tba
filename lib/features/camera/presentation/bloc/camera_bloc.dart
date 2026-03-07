@@ -1,182 +1,188 @@
 import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/extensions/either_extensions.dart';
-import '../../domain/usecases/initialize_camera.dart';
-import '../../domain/usecases/capture_image_and_store_locally.dart';
-import '../../domain/usecases/set_camera_zoom_level.dart';
-import '../../domain/usecases/set_manual_focus_point.dart';
-import '../../domain/usecases/add_image_to_upload_queue.dart';
-import '../../domain/repositories/camera_repository.dart';
 import '../../../../core/usecases/usecase.dart';
+import '../../domain/repositories/camera_repository.dart';
+import '../../domain/usecases/camera_usecases.dart';
 import 'camera_event.dart';
 import 'camera_state.dart';
 
 class CameraBloc extends Bloc<CameraEvent, CameraState> {
-  final InitializeCamera initializeCamera;
-  final CaptureImageAndStoreLocally captureImage;
-  final SetCameraZoomLevel setZoomLevel;
-  final SetManualFocusPoint setFocusPoint;
-  final AddImageToUploadQueue addToQueue;
+  final InitializeCamera initializeCameraUseCase;
+  final CaptureImageAndStoreLocally captureImageUseCase;
+  final SetCameraZoomLevel setZoomLevelUseCase;
+  final SetManualFocusPoint setFocusPointUseCase;
+  final AddImageToUploadQueue addImageToQueueUseCase;
   final CameraRepository cameraRepository;
 
-  Timer? _focusTimer;
-  // Debounce zoom to avoid flooding the camera API
-  Timer? _zoomDebounce;
-  double _pendingZoom = 1.0;
+  Timer? _focusIndicatorTimer;
+
+  // Zoom debounce prevents flooding the camera hardware API during pinch
+  Timer? _zoomDebounceTimer;
+  double _latestRequestedZoom = 1.0;
 
   CameraBloc({
-    required this.initializeCamera,
-    required this.captureImage,
-    required this.setZoomLevel,
-    required this.setFocusPoint,
-    required this.addToQueue,
+    required this.initializeCameraUseCase,
+    required this.captureImageUseCase,
+    required this.setZoomLevelUseCase,
+    required this.setFocusPointUseCase,
+    required this.addImageToQueueUseCase,
     required this.cameraRepository,
   }) : super(const CameraInitial()) {
-    on<InitializeCameraEvent>(_onInitialize);
-    on<CaptureImageEvent>(_onCapture);
-    on<SetZoomLevelEvent>(_onSetZoom);
-    on<SetFocusPointEvent>(_onSetFocus);
-    on<DisposeCameraEvent>(_onDispose);
-    on<ClearFocusIndicatorEvent>(_onClearFocus);
-    on<ApplyZoomEvent>(_onApplyZoom);
+    on<InitializeCameraEvent>(_handleInitialize);
+    on<CaptureImageEvent>(_handleCapture);
+    on<SetZoomLevelEvent>(_handleSetZoom);
+    on<ApplyZoomToHardwareEvent>(_handleApplyZoomToHardware);
+    on<SetFocusPointEvent>(_handleSetFocus);
+    on<DisposeCameraEvent>(_handleDispose);
+    on<ClearFocusIndicatorEvent>(_handleClearFocusIndicator);
   }
 
-  Future<void> _onInitialize(
+  Future<void> _handleInitialize(
       InitializeCameraEvent event, Emitter<CameraState> emit) async {
     emit(const CameraLoading());
 
-    final result = await initializeCamera(NoParams());
-
-    if (result.leftOrNull != null) {
-      emit(CameraError(result.leftOrNull?.message ?? 'Camera initialization failed'));
+    final cameraResult = await initializeCameraUseCase(NoParams());
+    if (cameraResult.leftOrNull != null) {
+      emit(CameraError(
+          cameraResult.leftOrNull?.message ?? 'Camera init failed'));
       return;
     }
 
-    final controller = result.rightOrNull!;
-    final configResult = await cameraRepository.getCameraConfiguration(controller);
-
+    final controller = cameraResult.rightOrNull!;
+    final configResult =
+        await cameraRepository.getCameraConfiguration(controller);
     if (configResult.leftOrNull != null) {
-      emit(CameraError(configResult.leftOrNull?.message ?? 'Failed to get camera config'));
+      emit(CameraError(
+          configResult.leftOrNull?.message ?? 'Failed to read camera config'));
       return;
     }
 
-    _pendingZoom = 1.0;
+    _latestRequestedZoom = 1.0;
     emit(CameraReady(
       controller: controller,
       configuration: configResult.rightOrNull!,
     ));
   }
 
-  Future<void> _onCapture(
+  Future<void> _handleCapture(
       CaptureImageEvent event, Emitter<CameraState> emit) async {
-    final current = state;
-    if (current is! CameraReady) return;
+    final currentState = state;
+    if (currentState is! CameraReady) return;
 
     emit(CameraCapturing(
-      controller: current.controller,
-      configuration: current.configuration,
+      controller: currentState.controller,
+      configuration: currentState.configuration,
     ));
 
-    final result = await captureImage(current.controller);
-
-    if (result.leftOrNull != null) {
-      emit(CameraError(result.leftOrNull?.message ?? 'Capture failed'));
+    final captureResult =
+        await captureImageUseCase(currentState.controller);
+    if (captureResult.leftOrNull != null) {
+      emit(CameraError(
+          captureResult.leftOrNull?.message ?? 'Capture failed'));
       return;
     }
 
-    final image = result.rightOrNull!;
-    await addToQueue(image);
+    final capturedImage = captureResult.rightOrNull!;
+
+    // Queue image for upload — fire and forget, no await needed for UX
+    await addImageToQueueUseCase(capturedImage);
 
     emit(CameraReady(
-      controller: current.controller,
-      configuration: current.configuration,
+      controller: currentState.controller,
+      configuration: currentState.configuration,
     ));
   }
 
-  /// SetZoomLevelEvent: update UI state immediately for smooth feel,
-  /// debounce the actual camera API call to avoid flooding it.
-  Future<void> _onSetZoom(
+  /// Updates UI zoom immediately for smooth feel, then debounces the
+  /// actual camera hardware call by 50 ms to avoid API flooding.
+  Future<void> _handleSetZoom(
       SetZoomLevelEvent event, Emitter<CameraState> emit) async {
-    final current = state;
-    if (current is! CameraReady) return;
+    final currentState = state;
+    if (currentState is! CameraReady) return;
 
     final clampedZoom = event.zoom.clamp(
-      current.configuration.minZoom,
-      current.configuration.maxZoom,
+      currentState.configuration.minZoom,
+      currentState.configuration.maxZoom,
     );
 
-    // Update UI immediately — makes pinch feel instant
-    emit(current.copyWith(
-      configuration: current.configuration.copyWith(currentZoom: clampedZoom),
+    // Update UI immediately so slider/pinch feels instant
+    emit(currentState.copyWith(
+      configuration:
+          currentState.configuration.copyWith(currentZoom: clampedZoom),
     ));
 
-    // Store pending and debounce actual camera call by 50ms
-    _pendingZoom = clampedZoom;
-    _zoomDebounce?.cancel();
-    _zoomDebounce = Timer(const Duration(milliseconds: 50), () {
-      add(ApplyZoomEvent(_pendingZoom));
+    // Store latest zoom and schedule hardware update
+    _latestRequestedZoom = clampedZoom;
+    _zoomDebounceTimer?.cancel();
+    _zoomDebounceTimer =
+        Timer(const Duration(milliseconds: 50), () {
+      add(ApplyZoomToHardwareEvent(_latestRequestedZoom));
     });
   }
 
-  /// Actually applies zoom to the camera hardware (debounced)
-  Future<void> _onApplyZoom(
-      ApplyZoomEvent event, Emitter<CameraState> emit) async {
-    final current = state;
-    if (current is! CameraReady) return;
+  /// Actually sets zoom on the camera hardware (called after debounce).
+  Future<void> _handleApplyZoomToHardware(
+      ApplyZoomToHardwareEvent event, Emitter<CameraState> emit) async {
+    final currentState = state;
+    if (currentState is! CameraReady) return;
 
-    await setZoomLevel(SetCameraZoomLevelParams(
-      controller: current.controller,
+    await setZoomLevelUseCase(ZoomLevelParams(
+      controller: currentState.controller,
       zoom: event.zoom,
     ));
-    // No emit needed — UI was already updated in _onSetZoom
+    // No emit needed — UI was already updated in _handleSetZoom
   }
 
-  Future<void> _onSetFocus(
+  Future<void> _handleSetFocus(
       SetFocusPointEvent event, Emitter<CameraState> emit) async {
-    final current = state;
-    if (current is! CameraReady) return;
+    final currentState = state;
+    if (currentState is! CameraReady) return;
 
-    final result = await setFocusPoint(SetManualFocusPointParams(
-      controller: current.controller,
+    final focusResult = await setFocusPointUseCase(FocusPointParams(
+      controller: currentState.controller,
       point: event.point,
     ));
 
-    if (result.leftOrNull != null) return;
+    if (focusResult.leftOrNull != null) return;
 
-    emit(current.copyWith(
+    emit(currentState.copyWith(
       focusPoint: event.point,
       showFocusIndicator: true,
     ));
 
-    _focusTimer?.cancel();
-    _focusTimer = Timer(const Duration(seconds: 2), () {
+    // Auto-hide the focus square after 2 seconds
+    _focusIndicatorTimer?.cancel();
+    _focusIndicatorTimer = Timer(const Duration(seconds: 2), () {
       add(const ClearFocusIndicatorEvent());
     });
   }
 
-  Future<void> _onDispose(
+  Future<void> _handleDispose(
       DisposeCameraEvent event, Emitter<CameraState> emit) async {
-    _zoomDebounce?.cancel();
-    _focusTimer?.cancel();
-    final current = state;
-    if (current is CameraReady) {
-      await cameraRepository.disposeCamera(current.controller);
+    _zoomDebounceTimer?.cancel();
+    _focusIndicatorTimer?.cancel();
+
+    final currentState = state;
+    if (currentState is CameraReady) {
+      await cameraRepository.disposeCamera(currentState.controller);
     }
+
     emit(const CameraInitial());
   }
 
-  void _onClearFocus(
+  void _handleClearFocusIndicator(
       ClearFocusIndicatorEvent event, Emitter<CameraState> emit) {
-    final current = state;
-    if (current is CameraReady) {
-      emit(current.copyWith(showFocusIndicator: false));
+    final currentState = state;
+    if (currentState is CameraReady) {
+      emit(currentState.copyWith(showFocusIndicator: false));
     }
   }
 
   @override
   Future<void> close() {
-    _zoomDebounce?.cancel();
-    _focusTimer?.cancel();
+    _zoomDebounceTimer?.cancel();
+    _focusIndicatorTimer?.cancel();
     return super.close();
   }
 }

@@ -12,7 +12,6 @@ class AppConstants {
   // Location
   static const int locationTimeoutSeconds = 15;
 
-
   // Camera / Sync
   static const String imageBatchesKey = 'image_batches_queue';
   static const String backgroundUploadTaskName = 'background_image_upload';

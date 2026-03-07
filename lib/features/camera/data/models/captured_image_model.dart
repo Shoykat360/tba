@@ -42,10 +42,10 @@ class CapturedImageModel {
 
   factory CapturedImageModel.fromMap(Map<String, dynamic> map) {
     return CapturedImageModel(
-      id: map['id'],
-      localPath: map['localPath'],
-      capturedAt: DateTime.parse(map['capturedAt']),
-      batchId: map['batchId'],
+      id: map['id'] as String,
+      localPath: map['localPath'] as String,
+      capturedAt: DateTime.parse(map['capturedAt'] as String),
+      batchId: map['batchId'] as String,
     );
   }
 }
