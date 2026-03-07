@@ -1,15 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-
-// ✅ FIXED: same folder — no subdirectory needed
-import 'features/ui_showcase/presentation/pages/ui_reconstruction_screen.dart';
-
 import 'features/attendance/presentation/bloc/attendance_bloc.dart';
 import 'features/attendance/presentation/pages/attendance_screen.dart';
 import 'core/di/injection_container.dart';
 import 'features/camera/presentation/bloc/camera_bloc.dart';
 import 'features/camera/presentation/bloc/sync_bloc.dart';
 import 'features/camera/presentation/pages/camera_preview_screen.dart';
+import 'features/ui_reconstruction/presentation/pages/ui_reconstruction_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
