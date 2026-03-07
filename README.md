@@ -179,7 +179,7 @@ Claude (Anthropic) was used to accelerate development. All generated output was 
 ## 🚀 How to Run
 
 ```bash
-git clone https://github.com/your-username/tba-assessment.git
+git clone https://github.com/Shoykat360/tba.git
 cd tba-assessment
 flutter pub get
 flutter run
