@@ -211,16 +211,16 @@ adb logcat | grep -E "\[AttendanceBloc\]|\[GeofenceService\]"
 
 ## 📸 Screenshots
 
-| Home | Task 1 — Attendance |
-|---|---|
-| ![Home](screenshoots/home.jpeg) | ![Attendance](screenshoots/t1.jpeg) |
+| Home | Task 1 — Attendance                 |
+|---|-------------------------------------|
+| ![Home](screenshots/home.jpeg) | ![Permission](screenshots/t1.jpeg) |
 
-| Task 2 — Camera | Task 2 — Pending Uploads |
-|---|---|
-| ![Camera](screenshoots/t2.jpeg) | ![Pending Uploads](screenshoots/t3.jpeg) |
+| Task 2 — Camera                           | Task 2 — Pending Uploads                    |
+|-------------------------------------------|---------------------------------------------|
+| ![Attendence Screen](screenshots/t2.jpeg) | ![set office location](screenshots/t3.jpeg) |
 
-| Task 3 — UI Showcase | Task 3 — Detail |
-|---|---|
-| ![UI Showcase](screenshoots/t4.jpeg) | ![UI Detail](screenshoots/t5.jpeg) |
+| Task 3 — UI Showcase                    | Task 3 — Detail                     |
+|-----------------------------------------|-------------------------------------|
+| ![Mark Attendence](screenshots/t4.jpeg) | ![Don t Allow](screenshots/t5.jpeg) |
 > Replace the placeholders above with screenshots after running on a device.
 > Recommended tool: `adb shell screencap -p /sdcard/screen.png && adb pull /sdcard/screen.png`
