@@ -1,7 +1,6 @@
 import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
-
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/error/exceptions.dart';
 import '../models/attendance_record_model.dart';

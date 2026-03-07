@@ -59,9 +59,7 @@ dev_dependencies:
   flutter_lints: ^5.0.0
   bloc_test: ^9.1.7
   mocktail: ^1.0.4
-  # ✅ build_runner kept for any future codegen needs
   build_runner: ^2.4.13
-  # ✅ hive_generator REMOVED — not needed since models use Box<Map> directly
 
 flutter:
   uses-material-design: true

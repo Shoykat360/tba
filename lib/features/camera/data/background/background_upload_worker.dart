@@ -13,13 +13,7 @@ const kBackgroundSyncTaskName = 'image_sync_task';
 const kBackgroundSyncUniqueTagPeriodic = 'image_sync_periodic';
 const kBackgroundSyncUniqueTagImmediate = 'image_sync_immediate';
 
-/// IMPORTANT: This function MUST be a top-level function (not inside a class).
-/// The @pragma annotation is required for release/AOT builds so the Dart
-/// compiler does not tree-shake this entry point away.
-///
-/// WorkManager runs this in a completely separate isolate from the main app,
-/// so no Flutter widgets or singletons are available — we re-initialise
-/// everything from scratch here.
+
 @pragma('vm:entry-point')
 void backgroundWorkerEntryPoint() {
   Workmanager().executeTask((taskName, inputData) async {

@@ -43,9 +43,7 @@ class HomeScreen extends StatelessWidget {
                     _TaskCard(
                       taskNumber: '01',
                       title: 'Geo-Fenced Attendance',
-                      description:
-                          'Set your office location via GPS and mark attendance only when you are within a 50m radius.',
-                      icon: Icons.location_on_rounded,
+                     icon: Icons.location_on_rounded,
                       color: const Color(0xFF4F46E5),
                       onTap: () => Navigator.push(
                         context,
@@ -61,8 +59,6 @@ class HomeScreen extends StatelessWidget {
                     _TaskCard(
                       taskNumber: '02',
                       title: 'Advanced Camera & Sync',
-                      description:
-                          'Custom camera with zoom, manual focus, batch capture, and resilient background upload sync.',
                       icon: Icons.camera_alt_rounded,
                       color: const Color(0xFF0891B2),
                       onTap: () => Navigator.push(
@@ -82,8 +78,6 @@ class HomeScreen extends StatelessWidget {
                     _TaskCard(
                       taskNumber: '03',
                       title: 'UI Reconstruction',
-                      description:
-                          'Pixel-perfect UI recreation with animations, micro-interactions, and responsive layout.',
                       icon: Icons.palette_rounded,
                       color: const Color(0xFF7C3AED),
                       // ✅ FIXED: navigates to UiReconstructionScreen
@@ -97,14 +91,6 @@ class HomeScreen extends StatelessWidget {
                   ],
                 ),
               ),
-              Center(
-                child: Text(
-                  'Built with Flutter · BLoC · Clean Architecture',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
             ],
           ),
         ),
@@ -116,7 +102,6 @@ class HomeScreen extends StatelessWidget {
 class _TaskCard extends StatelessWidget {
   final String taskNumber;
   final String title;
-  final String description;
   final IconData icon;
   final Color color;
   final VoidCallback onTap;
@@ -124,7 +109,6 @@ class _TaskCard extends StatelessWidget {
   const _TaskCard({
     required this.taskNumber,
     required this.title,
-    required this.description,
     required this.icon,
     required this.color,
     required this.onTap,
@@ -201,15 +185,7 @@ class _TaskCard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      Text(
-                        description,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                          height: 1.4,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+
                     ],
                   ),
                 ),
