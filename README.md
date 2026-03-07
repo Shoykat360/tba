@@ -174,33 +174,6 @@ Upload retried automatically, no user action needed
 
 Claude (Anthropic) was used to accelerate development. All generated output was manually reviewed, tested on device, and integrated intentionally.
 
-**How it was used:**
-
-**1. Scaffolding Clean Architecture boilerplate**
-Generating the repetitive but structurally consistent domain/data/presentation skeleton across all three features, following the pattern established in the attendance module.
-
-> *"Follow my attendance module architecture and write the same pattern for the camera feature — domain entities, abstract repository, typed use case params, data layer with `Either<Failure, T>`. Function names should be human-readable like `fetchLiveGpsLocation` and `captureImageAndStoreLocally`."*
-
-**2. Human-readable function renaming**
-Replacing cryptic short names throughout the codebase with names that read like plain English sentences.
-
-> *"Rewrite the attendance module with better readable names — `_onInitialize` → `handleScreenInitialization`, `lat1/lon1` → `fromLatitude/fromLongitude`, `_hasRealInternet` → `checkForRealInternet`. Same logic, just rename everything so it reads like a sentence."*
-
-**3. WorkManager background isolate architecture**
-Diagnosing why WorkManager stopped after app kill and generating the corrected structure.
-
-> *"My WorkManager task stops running after the user swipes the app away from recents. The callback was inside a class. Rewrite it as a top-level function with `@pragma('vm:entry-point')`, initialise Hive independently inside the isolate, and call `BackgroundSyncScheduler.initialise()` in `main()` before `runApp()`."*
-
-**4. Stuck-upload bug fix**
-Identifying the race condition where batches left in `uploading` status after an app kill were never retried.
-
-> *"After app kill and reopen, batches stuck as `uploading` are never retried because the query only looks for `pending` or `failed`. Fix `retrievePendingUploadQueue` to reset any `uploading` batch back to `pending` on load, and fix `SyncBloc` to trigger an immediate upload if internet is already available when the queue loads."*
-
-**5. Animated widget generation**
-Generating the animated components for the UI showcase from a description of the design tokens and intended behaviour.
-
-> *"Create an `AnimatedProgressRing` using `CustomPainter` that animates from 0 to a target percentage with `Curves.easeOutCubic`. Accept a `color`, `strokeWidth`, and `animationDelay` parameter so cards can stagger their entrance."*
-
 ---
 
 ## 🚀 How to Run
