@@ -211,10 +211,6 @@ adb logcat | grep -E "\[AttendanceBloc\]|\[GeofenceService\]"
 
 ## 📸 Screenshots
 
-## 📸 Screenshots
-
-## 📸 Screenshots
-
 ### Task 1 — Attendance
 |                                |                            |
 |--------------------------------|----------------------------|
@@ -228,9 +224,8 @@ adb logcat | grep -E "\[AttendanceBloc\]|\[GeofenceService\]"
 | ![t6](screenshots/t6.jpeg) | ![t7](screenshots/t7.jpeg) |
 | ![t8](screenshots/t8.jpeg) | ![t9](screenshots/t9.jpeg) |
 
-### Task 3 — UI Showcase
+### Task 3 — UI 
 | | |
 |---|---|
-| ![ui_card](screenshots/ui_card.jpeg) | ![ui_timeline](screenshots/ui_timeline.jpeg) |
-> Replace the placeholders above with screenshots after running on a device.
-> Recommended tool: `adb shell screencap -p /sdcard/screen.png && adb pull /sdcard/screen.png`
+| ![t10](screenshots/t10.jpeg) | ![t11](screenshots/t11.jpeg) |
+| ![t12](screenshots/t12.jpeg) | ![t13](screenshots/t13.jpeg) |
