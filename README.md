@@ -225,7 +225,8 @@ adb logcat | grep -E "\[AttendanceBloc\]|\[GeofenceService\]"
 ### Task 2 — Camera
 | | |
 |---|---|
-| ![camera_preview](screenshots/camera_preview.jpeg) | ![pending_uploads](screenshots/pending_uploads.jpeg) |
+| ![t6](screenshots/t6.jpeg) | ![t7](screenshots/t7.jpeg) |
+| ![t8](screenshots/t8.jpeg) | ![t9](screenshots/t9.jpeg) |
 
 ### Task 3 — UI Showcase
 | | |
