@@ -213,7 +213,7 @@ adb logcat | grep -E "\[AttendanceBloc\]|\[GeofenceService\]"
 
 | Home | Task 1 — Attendance                 |
 |---|-------------------------------------|
-| ![Home](screenshots/home.jpeg) | ![Permission](screenshots/t1.jpeg) |
+| ![Home](screenshots/home.jpeg) | ![Permission](screenshots/t1.jpeg) || ![Attendence Screen](screenshots/t2.jpeg) | ![set office location](screenshots/t3.jpeg) |
 
 | Task 2 — Camera                           | Task 2 — Pending Uploads                    |
 |-------------------------------------------|---------------------------------------------|
