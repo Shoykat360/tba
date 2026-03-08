@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:geolocator/geolocator.dart';
 
 import '../../../../core/utils/date_time_formatter.dart';
 import '../../domain/entities/attendance_record.dart';
@@ -21,22 +22,84 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   @override
   void initState() {
     super.initState();
-    context.read<AttendanceBloc>().add(const InitializeAttendanceScreen());
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await handleLocationSetup();
+      if (mounted) {
+        context.read<AttendanceBloc>().add(const InitializeAttendanceScreen());
+      }
+    });
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Attendance'),
-        centerTitle: true,
-        actions: [buildRefreshIconButton()],
-      ),
-      body: BlocConsumer<AttendanceBloc, AttendanceState>(
-        listener: handleBlocSideEffects,
-        builder: buildScreenBody,
-      ),
-    );
+  // ─── Location Setup ───────────────────────────────────────────────────────
+
+  Future<void> handleLocationSetup() async {
+    try {
+      final bool isServiceOn = await Geolocator.isLocationServiceEnabled();
+
+      if (isServiceOn) {
+        // GPS already on — just ensure permission is granted, no service dialog needed.
+        await ensureLocationPermissionGranted();
+      } else {
+        final bool permissionGranted = await ensureLocationPermissionGranted();
+        if (!permissionGranted) return;
+
+        // Short delay — allows the OS to auto-enable GPS if it does so on this device.
+        await Future.delayed(const Duration(milliseconds: 800));
+
+        // Re-check service after delay — only show dialog if still off.
+        final bool isServiceNowOn = await Geolocator.isLocationServiceEnabled();
+        if (!isServiceNowOn && mounted) {
+          await ensureLocationServiceEnabled();
+        }
+      }
+    } catch (e) {
+      debugPrint('[Attendance] ❌ Location setup error: $e');
+    }
+  }
+
+  /// Requests app-level location permission.
+  /// Returns true if granted, false if denied or permanently denied.
+  Future<bool> ensureLocationPermissionGranted() async {
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+
+      if (permission == LocationPermission.always ||
+          permission == LocationPermission.whileInUse) {
+        return true;
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) _showPermanentlyDeniedDialog();
+        return false;
+      }
+
+      // Shows the native "Allow location?" system dialog
+      permission = await Geolocator.requestPermission();
+
+      if (permission == LocationPermission.whileInUse ||
+          permission == LocationPermission.always) {
+        return true;
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) _showPermanentlyDeniedDialog();
+      }
+
+      return false;
+    } catch (e) {
+      debugPrint('[Attendance] ❌ Permission error: $e');
+      return false;
+    }
+  }
+
+  /// Opens location settings. On most Android devices this shows
+  /// an inline "Turn on Location?" popup rather than the full settings page.
+  Future<void> ensureLocationServiceEnabled() async {
+    try {
+      await Geolocator.openLocationSettings();
+    } catch (e) {
+      debugPrint('[Attendance] ❌ Service enable error: $e');
+    }
   }
 
   // ─── AppBar ───────────────────────────────────────────────────────────────
@@ -59,21 +122,23 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
   // ─── BlocConsumer Callbacks ───────────────────────────────────────────────
 
-  /// Handles one-time side effects.
-  /// When attendance is marked successfully, shows a success popup dialog.
-  /// When user taps "Back to Home" inside the dialog, it navigates back.
   void handleBlocSideEffects(BuildContext context, AttendanceState state) {
     if (state.attendanceJustMarkedSuccessfully) {
       showAttendanceSuccessDialog(context, state);
+    }
+
+    // GPS toggled OFF while screen is open → prompt service enable
+    if (state.status == AttendanceStatus.failure &&
+        state.generalErrorMessage != null &&
+        state.generalErrorMessage!.toLowerCase().contains('turned off')) {
+      ensureLocationServiceEnabled();
     }
   }
 
   Widget buildScreenBody(BuildContext context, AttendanceState state) {
     return RefreshIndicator(
       onRefresh: () async {
-        context
-            .read<AttendanceBloc>()
-            .add(const RefreshCurrentUserLocation());
+        context.read<AttendanceBloc>().add(const RefreshCurrentUserLocation());
       },
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -116,6 +181,21 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             ],
           ],
         ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Attendance'),
+        centerTitle: true,
+        actions: [buildRefreshIconButton()],
+      ),
+      body: BlocConsumer<AttendanceBloc, AttendanceState>(
+        listener: handleBlocSideEffects,
+        builder: buildScreenBody,
       ),
     );
   }
@@ -179,7 +259,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           const SizedBox(height: 8),
           Text(
             DateTimeFormatter.formatDateTime(DateTime.now()),
-            style: theme.textTheme.bodySmall?.copyWith(color: Colors.white70),
+            style:
+            theme.textTheme.bodySmall?.copyWith(color: Colors.white70),
           ),
           const SizedBox(height: 4),
           Text(
@@ -249,8 +330,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             context,
             icon: Icons.calendar_today_rounded,
             label: 'Saved at',
-            value:
-            DateTimeFormatter.formatDateTime(state.officeLocation!.savedAt),
+            value: DateTimeFormatter.formatDateTime(
+                state.officeLocation!.savedAt),
           ),
           if (state.userLocation != null) ...[
             const SizedBox(height: 6),
@@ -335,8 +416,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         const SizedBox(width: 8),
         Text(
           '$label: ',
-          style:
-          theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
+          style: theme.textTheme.bodySmall
+              ?.copyWith(fontWeight: FontWeight.w600),
         ),
         Expanded(
           child: Text(value, style: theme.textTheme.bodySmall),
@@ -420,8 +501,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
   // ─── Success Dialog ───────────────────────────────────────────────────────
 
-  /// Shows a success popup with the marked time and distance from office.
-  /// Tapping "Back to Home" closes the dialog then pops back to the home screen.
   void showAttendanceSuccessDialog(
       BuildContext context, AttendanceState state) {
     final AttendanceRecord? latestRecord = state.attendanceHistory.isNotEmpty
@@ -433,8 +512,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       barrierDismissible: false,
       builder: (dialogContext) {
         return Dialog(
-          shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24)),
           child: Padding(
             padding: const EdgeInsets.all(28),
             child: Column(
@@ -467,11 +546,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         color: Colors.green.withOpacity(0.1),
         shape: BoxShape.circle,
       ),
-      child: const Icon(
-        Icons.check_circle_rounded,
-        color: Colors.green,
-        size: 48,
-      ),
+      child: const Icon(Icons.check_circle_rounded,
+          color: Colors.green, size: 48),
     );
   }
 
@@ -479,10 +555,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     return const Text(
       'Attendance Marked!',
       style: TextStyle(
-        fontSize: 22,
-        fontWeight: FontWeight.bold,
-        color: Colors.green,
-      ),
+          fontSize: 22, fontWeight: FontWeight.bold, color: Colors.green),
     );
   }
 
@@ -490,17 +563,13 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     return Text(
       'Your attendance has been recorded successfully.',
       textAlign: TextAlign.center,
-      style: TextStyle(
-        fontSize: 14,
-        color: Colors.grey.shade600,
-      ),
+      style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
     );
   }
 
   Widget buildAttendanceDetailCard(
       BuildContext context, AttendanceRecord record) {
     final theme = Theme.of(context);
-
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
@@ -540,19 +609,14 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       children: [
         Icon(icon, size: 16, color: Colors.green),
         const SizedBox(width: 8),
-        Text(
-          '$label: ',
-          style:
-          theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
-        ),
-        Expanded(
-          child: Text(value, style: theme.textTheme.bodySmall),
-        ),
+        Text('$label: ',
+            style: theme.textTheme.bodySmall
+                ?.copyWith(fontWeight: FontWeight.w600)),
+        Expanded(child: Text(value, style: theme.textTheme.bodySmall)),
       ],
     );
   }
 
-  /// Closes the dialog first, then pops the attendance screen back to home.
   Widget buildBackToHomeButton(
       BuildContext context, BuildContext dialogContext) {
     return SizedBox(
@@ -560,28 +624,71 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       height: 48,
       child: ElevatedButton.icon(
         onPressed: () {
-          Navigator.of(dialogContext).pop(); // close the dialog
-          Navigator.of(context).pop();       // go back to home screen
+          Navigator.of(dialogContext).pop();
+          Navigator.of(context).pop();
         },
         icon: const Icon(Icons.home_rounded, size: 20),
-        label: const Text(
-          'Back to Home',
-          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-        ),
+        label: const Text('Back to Home',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.green,
           foregroundColor: Colors.white,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
+              borderRadius: BorderRadius.circular(12)),
         ),
       ),
     );
   }
 
+  // ─── Permanently Denied Dialog ────────────────────────────────────────────
+
+  void _showPermanentlyDeniedDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20)),
+          icon: const Icon(Icons.location_disabled_rounded,
+              color: Colors.red, size: 48),
+          title: const Text('Location Permission Denied',
+              textAlign: TextAlign.center,
+              style:
+              TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          content: const Text(
+            'Location permission was permanently denied.\n\nGo to App Settings → Permissions → Location → Allow.',
+            textAlign: TextAlign.center,
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Later'),
+            ),
+            ElevatedButton.icon(
+              onPressed: () async {
+                Navigator.of(dialogContext).pop();
+                await Geolocator.openAppSettings();
+              },
+              icon: const Icon(Icons.settings_rounded, size: 18),
+              label: const Text('Open App Settings',
+                  style: TextStyle(fontWeight: FontWeight.w600)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   // ─── Pure Helpers ─────────────────────────────────────────────────────────
 
-  /// Returns the correct status message for the header card.
   String resolveGeofenceStatusMessage(AttendanceState state) {
     if (state.officeLocation == null) return 'No office location set';
     if (state.isUserInsideGeofence) return 'You are at the office ✅';
